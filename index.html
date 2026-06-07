@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程數學報告：四元數 vs 尤拉角 (無限後室版)</title>
+    <style>
+        :root {
+            --primary: #d4b553;
+            /* 病態黃色 */
+            --bg-dark: rgba(15, 12, 5, 0.85);
+            --border-color: #554422;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            color: #eedd99;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* 準星 */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        #crosshair::before {
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            transform: translateX(-50%);
+        }
+
+        #crosshair::after {
+            top: 50%;
+            left: 0;
+            height: 2px;
+            width: 100%;
+            transform: translateY(-50%);
+        }
+
+        /* 左上角控制說明 */
+        #ctrl-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px 20px;
+            width: 280px;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+
+        .panel-title {
+            color: var(--primary);
+            font-weight: bold;
+            margin-bottom: 12px;
+            font-size: 15px;
+            text-shadow: 0 0 5px var(--primary);
+        }
+
+        .panel-line {
+            border-bottom: 1px solid #443311;
+            margin: 10px 0;
+        }
+
+        .ctrl-row {
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #ccbb99;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        kbd {
+            background: #332211;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #665533;
+            font-family: monospace;
+            color: #ffdd88;
+            font-size: 11px;
+        }
+
+        .desc-text {
+            font-size: 12px;
+            color: #aa9977;
+            line-height: 1.6;
+        }
+
+        /* 右上角即時狀態 */
+        #stats-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px 20px;
+            width: 240px;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+
+        /* 更新 name-tag 樣式以加入頭像並排 */
+        .name-tag {
+            position: absolute;
+            top: -15px;
+            right: 10px;
+            /* 稍微向上調整留出空間 */
+            background: #886622;
+            color: #fff;
+            padding: 5px 12px;
+            /* 增加 padding */
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid #ddbb66;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            /* 並排顯示 */
+        }
+
+        /* 頭像圖片樣式 */
+        .avatar-img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid #fff;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .stat-label {
+            color: #aa9977;
+        }
+
+        .stat-val {
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .val-roll {
+            color: #ff4444;
+            font-weight: bold;
+        }
+
+        .val-pitch {
+            color: var(--primary);
+        }
+
+        .val-yaw {
+            color: #ddd;
+        }
+
+        /* 右下角圖表 */
+        #chart-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            width: 380px;
+            height: 220px;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+
+        #chart-title {
+            text-align: center;
+            font-size: 13px;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        /* 警告標語 */
+        #gl-warn {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(40, 10, 10, 0.9);
+            border: 2px solid #ff2222;
+            border-radius: 8px;
+            padding: 15px 30px;
+            text-align: center;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        #gl-warn.show {
+            opacity: 1;
+        }
+
+        #gl-warn .w-title {
+            color: #ff3333;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px red;
+        }
+
+        #gl-warn .w-desc {
+            color: #ffaaaa;
+            font-size: 13px;
+        }
+
+        /* 底部控制列 */
+        #bottom-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(15, 12, 5, 0.95);
+            border-top: 1px solid #443311;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            z-index: 40;
+            box-sizing: border-box;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #221100;
+            color: #aa9977;
+            border: 1px solid #554422;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: inherit;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            border-color: #887744;
+            color: #fff;
+        }
+
+        .btn.active {
+            background: rgba(212, 181, 83, 0.15);
+            color: var(--primary);
+            border-color: var(--primary);
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(212, 181, 83, 0.2);
+        }
+
+        .switch-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #ccbb99;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 46px;
+            height: 24px;
+        }
+
+        .switch input {
+            display: none;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: #443322;
+            border-radius: 24px;
+            transition: .2s;
+        }
+
+        .slider::before {
+            content: '';
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            top: 3px;
+            background: #aa9977;
+            border-radius: 50%;
+            transition: .2s;
+        }
+
+        .switch input:checked+.slider {
+            background: var(--primary);
+        }
+
+        .switch input:checked+.slider::before {
+            transform: translateX(22px);
+            background: #fff;
+        }
+
+        .hint-text {
+            font-size: 13px;
+            color: #887755;
+        }
+
+        /* 暫停遮罩層 */
+        #blocker {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 8, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            cursor: pointer;
+        }
+
+        #start-msg {
+            font-size: 28px;
+            color: var(--primary);
+            font-weight: bold;
+            letter-spacing: 4px;
+            text-shadow: 0 0 15px var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .sub-msg {
+            color: #aa9977;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <div id="blocker" onclick="document.body.requestPointerLock()">
+        <div id="start-msg">進入 The Backrooms (點擊畫面)</div>
+        <div class="sub-msg">按 ESC 可暫停並開啟設定選單</div>
+    </div>
+
+    <div id="crosshair"></div>
+
+    <div id="ctrl-panel">
+        <div class="panel-title" id="p-mode-title">模式：尤拉角 (Euler)</div>
+        <div class="ctrl-row">滑鼠：轉動視角</div>
+        <div class="ctrl-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動 &nbsp; <kbd>Ctrl</kbd> 衝刺</div>
+        <div class="ctrl-row"><kbd>SPACE</kbd> 跳躍 &nbsp; <kbd>SHIFT</kbd> 蹲下</div>
+        <div class="ctrl-row"><kbd>P</kbd> 重置座標與視角</div>
+        <div class="panel-line"></div>
+        <div class="desc-text" id="p-mode-desc">
+            尤拉角模式：<br>
+            當解除限制時，抬頭至 90 度會引發萬向鎖 (Gimbal Lock)，數學公式崩潰。
+        </div>
+    </div>
+
+    <div id="stats-panel">
+        <div class="name-tag">
+            <img src="avatar.png" class="avatar-img" alt="Avatar">
+            <span>Simion</span>
+        </div>
+        <div class="panel-title">即時狀態</div>
+        <div class="stat-row"><span class="stat-label">Roll (翻滾 X)</span><span class="stat-val val-roll"
+                id="s-roll">0.00°</span></div>
+        <div class="stat-row"><span class="stat-label">Pitch (俯仰 Y)</span><span class="stat-val val-pitch"
+                id="s-pitch">0.00°</span></div>
+        <div class="stat-row"><span class="stat-label">Yaw (偏航 Z)</span><span class="stat-val val-yaw"
+                id="s-yaw">0.00°</span></div>
+        <div class="panel-line"></div>
+        <div class="stat-row"><span class="stat-label">演算法</span><span style="color:var(--primary)"
+                id="s-alg">尤拉角</span></div>
+        <div class="stat-row"><span class="stat-label">角度限制</span><span style="color:var(--primary)" id="s-limit">開啟
+                (±89.9°)</span></div>
+    </div>
+
+    <div id="chart-panel">
+        <div id="chart-title">即時角度示波器 (°)</div>
+        <canvas id="angleChart"></canvas>
+    </div>
+
+    <div id="gl-warn">
+        <div class="w-title">⚠️ GIMBAL LOCK</div>
+        <div class="w-desc">數學除以零！Cos(90°)=0，橫向輸入被放大 16兆倍！</div>
+    </div>
+
+    <div id="bottom-bar">
+        <div class="btn-group">
+            <button class="btn active" id="btn-euler" onclick="setAlg('euler')">尤拉角 (Euler)</button>
+            <button class="btn" id="btn-quat" onclick="setAlg('quat')">四元數 (Quaternion)</button>
+        </div>
+        <div class="switch-group">
+            角度限制：
+            <label class="switch">
+                <input type="checkbox" id="limit-toggle" checked onchange="setLimit(this.checked)">
+                <span class="slider"></span>
+            </label>
+            <span id="limit-text" style="width:120px;">開啟 (±89.9°)</span>
+        </div>
+        <div class="hint-text">按下 ESC 即可操作此選單</div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // ==========================================
+        // 1. 無限場景生成：The Backrooms Level 0
+        // ==========================================
+        const scene = new THREE.Scene();
+        const fogColor = new THREE.Color(0xa39045);
+        scene.background = fogColor;
+        scene.fog = new THREE.FogExp2(fogColor, 0.035);
+
+        const ambientLight = new THREE.AmbientLight(0xfffae6, 0.5);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xfff0cc, 0.4);
+        dirLight.position.set(10, 50, 10);
+        scene.add(dirLight);
+
+        // 動態生成材質
+        function createCarpetTexture() {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+            const ctx = c.getContext('2d');
+            for (let i = 0; i < 256; i += 2) {
+                for (let j = 0; j < 256; j += 2) {
+                    const noise = Math.random() * 30;
+                    ctx.fillStyle = `rgb(${140 + noise}, ${120 + noise}, ${50 + noise / 2})`;
+                    ctx.fillRect(i, j, 2, 2);
+                }
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(1500, 1500);
+            return tex;
+        }
+
+        function createWallpaperTexture() {
+            const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#d1c073'; ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#b8a65a'; ctx.lineWidth = 2;
+            for (let i = 0; i <= 128; i += 16) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 128); ctx.stroke();
+            }
+            for (let i = 0; i < 15; i++) {
+                ctx.fillStyle = `rgba(100, 80, 30, ${Math.random() * 0.1})`;
+                ctx.beginPath();
+                ctx.arc(Math.random() * 128, Math.random() * 128, Math.random() * 20 + 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        function createCeilingTexture() {
+            const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#e0dbcc'; ctx.fillRect(0, 0, 256, 256);
+            ctx.strokeStyle = '#a09b8c'; ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, 256, 256);
+            if (Math.random() > 0.75) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(20, 20, 216, 216);
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(500, 500);
+            return tex;
+        }
+
+        const floorMat = new THREE.MeshStandardMaterial({ map: createCarpetTexture(), roughness: 1.0 });
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(15000, 15000), floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        const ceilingMat = new THREE.MeshStandardMaterial({ map: createCeilingTexture(), roughness: 0.9, emissive: 0x222211 });
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(15000, 15000), ceilingMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = 15;
+        scene.add(ceiling);
+
+        const colliders = [];
+        const generatedChunks = new Set();
+        const chunkSize = 40;
+        const wallGeo = new THREE.BoxGeometry(10, 15, 10);
+        const wallpaperMat = new THREE.MeshStandardMaterial({ map: createWallpaperTexture(), roughness: 0.8 });
+
+        function addWall(x, z, scaleX = 1, scaleZ = 1) {
+            const mesh = new THREE.Mesh(wallGeo, wallpaperMat);
+            mesh.position.set(x, 7.5, z);
+            mesh.scale.set(scaleX, 1, scaleZ);
+
+            const tex = wallpaperMat.map.clone();
+            tex.repeat.set(scaleX * 2, 1);
+            tex.needsUpdate = true;
+            mesh.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
+            scene.add(mesh);
+
+            mesh.updateMatrixWorld();
+            const box = new THREE.Box3().setFromObject(mesh);
+            colliders.push({ box: box, center: new THREE.Vector3(x, 7.5, z) });
+        }
+
+        // ==========================================
+        // 後室生物 (Entity) 系統：盯著玩家並在靠近時消失
+        // ==========================================
+        // 定義生物 Mesh（黑影圓柱體，加上發光眼睛）
+        const entities = [];
+        const entityGeo = new THREE.CylinderGeometry(0.5, 0.5, 8, 8); // 瘦長圓柱體
+        const entityMatBase = new THREE.MeshStandardMaterial({
+            color: 0x000000,
+            roughness: 1.0,
+            transparent: true, // 啟用透明度以供消失動畫
+            opacity: 1.0
+        });
+
+        function createEntity(pos) {
+            // 複製材質，使每個生物能獨立控制透明度
+            const mat = entityMatBase.clone();
+            const mesh = new THREE.Mesh(entityGeo, mat);
+            mesh.position.set(pos.x, 4, pos.z); // 在地毯上，高度中等
+            scene.add(mesh);
+
+            // 添加發光眼睛（廣告牌效果的關鍵）
+            const eyeGeo = new THREE.SphereGeometry(0.1, 8, 8);
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.2, 3.5, 0.4); // 眼睛位置
+            rightEye.position.set(0.2, 3.5, 0.4);
+            mesh.add(leftEye, rightEye);
+
+            return {
+                mesh: mesh,
+                state: 'idle',
+                opacity: 1.0,
+                proximityThreshold: 40.0 // 距離 40公尺時消失
+            };
+        }
+
+        function generateChunk(cx, cz) {
+            const key = `${cx},${cz}`;
+            if (generatedChunks.has(key)) return;
+            generatedChunks.add(key);
+
+            // 1. 生成牆壁
+            const numWalls = Math.floor(Math.random() * 4) + 2;
+            for (let i = 0; i < numWalls; i++) {
+                const x = cx * chunkSize + (Math.random() - 0.5) * chunkSize;
+                const z = cz * chunkSize + (Math.random() - 0.5) * chunkSize;
+
+                // 【修正】只避開出生點 (0,0) 半徑 15 公尺，這樣起點才會有牆壁
+                if (Math.hypot(x, z) < 15) continue;
+
+                const isHorizontal = Math.random() > 0.5;
+                const scaleX = isHorizontal ? (Math.random() * 3 + 1.5) : 1;
+                const scaleZ = isHorizontal ? 1 : (Math.random() * 3 + 1.5);
+                addWall(x, z, scaleX, scaleZ);
+            }
+
+            // 2. 生成生物 (90% 機率)
+            if (Math.random() < 1) {
+                const spawnEx = cx * chunkSize + (Math.random() - 0.5) * chunkSize;
+                const spawnEz = cz * chunkSize + (Math.random() - 0.5) * chunkSize;
+
+                // 【修正】只要不是直接貼在玩家臉上出生 (大於10公尺) 就允許生成
+                // 遠處的生物會被濃霧遮住，直到玩家走近才會看到
+                if (Math.hypot(spawnEx, spawnEz) > 10) {
+                    entities.push(createEntity({ x: spawnEx, z: spawnEz }));
+                }
+            }
+        }
+
+        function updateInfiniteMaze() {
+            const cx = Math.floor(camera.position.x / chunkSize);
+            const cz = Math.floor(camera.position.z / chunkSize);
+            for (let i = -2; i <= 2; i++) {
+                for (let j = -2; j <= 2; j++) {
+                    generateChunk(cx + i, cz + j);
+                }
+            }
+        }
+
+        // ==========================================
+        // 2. 攝影機與控制邏輯
+        // ==========================================
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(innerWidth, innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 0); scene.add(camera);
+
+        let currentMode = 1;
+        const SENS = 0.0022;
+
+        let targetYaw = 0, targetPitch = 0;
+        const PITCH_899 = 89.9 * Math.PI / 180;
+        const PITCH_90 = 90.0 * Math.PI / 180;
+        const PITCH_FOLD = 179 * Math.PI / 180;
+        const EULER_PITCH_LIMIT = Math.PI / 2;
+
+        let alg = 'euler';
+        let limited = true;
+
+        let inX = 0, inY = 0;
+        let e2 = { roll: 0, pitch: 0, yaw: 0 };
+        let q3 = new THREE.Quaternion();
+        let q3yaw = 0, q3pitch = 0;
+
+        let velocityY = 0;
+        let isGrounded = true;
+
+        const blocker = document.getElementById('blocker');
+        const startMsg = document.getElementById('start-msg');
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                blocker.style.backgroundColor = 'transparent';
+                blocker.style.pointerEvents = 'none';
+                startMsg.parentElement.style.opacity = '0';
+            } else {
+                blocker.style.backgroundColor = 'rgba(10, 8, 0, 0.85)';
+                blocker.style.pointerEvents = 'auto';
+                startMsg.parentElement.style.opacity = '1';
+            }
+        });
+
+        const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
+        document.addEventListener('keydown', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'w') keys.w = true;
+            if (k === 'a') keys.a = true;
+            if (k === 's') keys.s = true;
+            if (k === 'd') keys.d = true;
+            if (k === ' ') keys.space = true;
+            if (e.key === 'Shift') keys.shift = true;
+            if (e.key === 'Control') keys.ctrl = true;
+
+            if (k === 'p') {
+                camera.position.set(0, 5, 0);
+                velocityY = 0;
+                isGrounded = true;
+                targetYaw = 0; targetPitch = 0; inX = 0; inY = 0;
+                e2 = { roll: 0, pitch: 0, yaw: 0 };
+                q3yaw = 0; q3pitch = 0; q3.identity();
+                camera.rotation.set(0, 0, 0); camera.quaternion.identity();
+                yawData.fill(null); pitchData.fill(null); rollData.fill(null); lastY = null;
+            }
+        });
+        document.addEventListener('keyup', e => {
+            const k = e.key.toLowerCase();
+            if (k === 'w') keys.w = false;
+            if (k === 'a') keys.a = false;
+            if (k === 's') keys.s = false;
+            if (k === 'd') keys.d = false;
+            if (k === ' ') keys.space = false;
+            if (e.key === 'Shift') keys.shift = false;
+            if (e.key === 'Control') keys.ctrl = false;
+        });
+
+        function setAlg(a) {
+            alg = a;
+            document.getElementById('btn-euler').classList.toggle('active', a === 'euler');
+            document.getElementById('btn-quat').classList.toggle('active', a === 'quat');
+            applyConfig();
+        }
+        function setLimit(on) {
+            limited = on;
+            applyConfig();
+        }
+
+        function applyConfig() {
+            if (alg === 'euler') currentMode = limited ? 1 : 2;
+            else currentMode = 3;
+
+            targetYaw = 0; targetPitch = 0; inX = 0; inY = 0;
+            e2 = { roll: 0, pitch: 0, yaw: 0 };
+            q3.identity(); q3yaw = 0; q3pitch = 0;
+            camera.rotation.set(0, 0, 0); camera.quaternion.identity();
+            yawData.fill(null); pitchData.fill(null); rollData.fill(null); lastY = null;
+
+            const lText = document.getElementById('limit-text');
+            const pTitle = document.getElementById('p-mode-title');
+            const pDesc = document.getElementById('p-mode-desc');
+            const sAlg = document.getElementById('s-alg');
+            const sLim = document.getElementById('s-limit');
+
+            if (currentMode === 1) {
+                lText.innerText = '開啟 (±89.9°)'; lText.style.color = '#ccc';
+                pTitle.innerText = '模式：尤拉角 (Euler)'; pTitle.style.color = 'var(--primary)';
+                pDesc.innerHTML = '尤拉角模式：<br>開啟角度限制，最高只到 89.9 度，避開數學奇異點，這是一般 FPS 遊戲的做法。';
+                sAlg.innerText = '尤拉角 (安全)'; sLim.innerText = '開啟 (±89.9°)';
+            } else if (currentMode === 2) {
+                lText.innerText = '關閉 (允許 90°)'; lText.style.color = '#ff4444';
+                pTitle.innerText = '模式：尤拉角 (解除限制)'; pTitle.style.color = '#ff4444';
+                pDesc.innerHTML = '<b style="color:#ff4444">警告：純數學極限</b><br>導入尤拉角運動學公式。當視角逼近 90 度，Yaw 會因「除以 Cos(90)」引發除以零錯誤，數值瞬間發散，畫面崩潰。';
+                sAlg.innerText = '尤拉角 (發散)'; sLim.innerText = '關閉 (至 ±90°)';
+            } else {
+                lText.innerText = limited ? '開啟 (±90°)' : '關閉 (無限制)'; lText.style.color = '#ccc';
+                pTitle.innerText = '模式：四元數 (Quaternion)'; pTitle.style.color = 'var(--primary)';
+                pDesc.innerHTML = limited
+                    ? '四元數模式：<br>不會產生萬向節鎖 (Gimbal Lock)，數學運算永遠穩定。'
+                    : '四元數模式 (無限制)：<br>可自由旋轉越過頭頂看後方，完全沒有數學死角。';
+                sAlg.innerText = '四元數'; sLim.innerText = limited ? '開啟 (±90°)' : '關閉 (無限制)';
+            }
+        }
+
+        document.addEventListener('mousemove', e => {
+            if (document.pointerLockElement !== document.body) return;
+            if (currentMode === 1) {
+                targetYaw -= e.movementX * SENS;
+                targetPitch -= e.movementY * SENS;
+                while (targetYaw > Math.PI) targetYaw -= 2 * Math.PI;
+                while (targetYaw <= -Math.PI) targetYaw += 2 * Math.PI;
+                targetPitch = Math.max(-PITCH_899, Math.min(PITCH_899, targetPitch));
+                camera.rotation.set(targetPitch, targetYaw, 0, 'YXZ');
+            } else {
+                inX -= e.movementY * SENS;
+                inY -= e.movementX * SENS;
+            }
+        });
+
+        function checkCollision(pos, height) {
+            const playerRadius = 1.2;
+            const playerBox = new THREE.Box3(
+                new THREE.Vector3(pos.x - playerRadius, pos.y - height + 0.5, pos.z - playerRadius),
+                new THREE.Vector3(pos.x + playerRadius, pos.y + 0.2, pos.z + playerRadius)
+            );
+
+            for (let i = 0; i < colliders.length; i++) {
+                const col = colliders[i];
+                if (Math.abs(col.center.x - pos.x) < 20 && Math.abs(col.center.z - pos.z) < 20) {
+                    if (playerBox.intersectsBox(col.box)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function applyMovement() {
+            if (document.pointerLockElement !== document.body) return;
+
+            let baseSpeed = 0.22;
+            let targetHeight = 5.0;
+
+            if (keys.shift) {
+                targetHeight = 2.5;
+                baseSpeed = 0.10;
+            } else if (keys.ctrl) {
+                baseSpeed = 0.48; // 衝刺速度
+            }
+
+            const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            fwd.y = 0; fwd.normalize();
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            right.y = 0; right.normalize();
+
+            const moveDir = new THREE.Vector3(0, 0, 0);
+            if (keys.w) moveDir.addScaledVector(fwd, baseSpeed);
+            if (keys.s) moveDir.addScaledVector(fwd, -baseSpeed);
+            if (keys.a) moveDir.addScaledVector(right, -baseSpeed);
+            if (keys.d) moveDir.addScaledVector(right, baseSpeed);
+
+            if (moveDir.x !== 0) {
+                camera.position.x += moveDir.x;
+                if (checkCollision(camera.position, targetHeight)) {
+                    camera.position.x -= moveDir.x;
+                }
+            }
+            if (moveDir.z !== 0) {
+                camera.position.z += moveDir.z;
+                if (checkCollision(camera.position, targetHeight)) {
+                    camera.position.z -= moveDir.z;
+                }
+            }
+
+            // 跳躍：衝刺時跳得更遠
+            if (keys.space && isGrounded) {
+                velocityY = keys.ctrl ? 0.65 : 0.52;
+                isGrounded = false;
+            }
+
+            velocityY -= 0.032;
+            camera.position.y += velocityY;
+
+            if (camera.position.y <= targetHeight) {
+                camera.position.y = targetHeight;
+                velocityY = 0;
+                isGrounded = true;
+            }
+        }
+
+        function physicalRoll(cam) {
+            const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+            if (Math.abs(fwd.y) > 0.9995) return 0;
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+            const expectRight = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+            let roll = expectRight.angleTo(right);
+            const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+            if (up.dot(expectRight) > 0) roll = -roll;
+            return THREE.MathUtils.radToDeg(roll);
+        }
+
+        // ===== CHART =====
+        let angleChart;
+        const N = 200;
+        let yawData = Array(N).fill(null), pitchData = Array(N).fill(null), rollData = Array(N).fill(null);
+        let lastY = null;
+
+        function initChart() {
+            const ctx = document.getElementById('angleChart').getContext('2d');
+            angleChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({ length: N }, (_, i) => i),
+                    datasets: [
+                        { label: 'Yaw', data: yawData, borderColor: '#aaccff', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: false },
+                        { label: 'Pitch', data: pitchData, borderColor: '#d4b553', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: false },
+                        { label: 'Roll', data: rollData, borderColor: '#ff4444', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: false },
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { min: -180, max: 180, ticks: { color: '#887755', stepSize: 90 }, grid: { color: '#332211' } },
+                        x: { display: false }
+                    },
+                    plugins: { legend: { labels: { color: '#ccbb99', boxWidth: 12, font: { size: 11 } } } },
+                    animation: false
+                }
+            });
+        }
+
+        function updateChart() {
+            let yDeg, pDeg, rDeg;
+            if (currentMode === 1) {
+                yDeg = THREE.MathUtils.radToDeg(targetYaw);
+                pDeg = THREE.MathUtils.radToDeg(targetPitch);
+                rDeg = physicalRoll(camera);
+            } else if (currentMode === 2) {
+                yDeg = THREE.MathUtils.radToDeg(e2.yaw);
+                pDeg = THREE.MathUtils.radToDeg(e2.pitch);
+                rDeg = THREE.MathUtils.radToDeg(e2.roll);
+                yDeg = ((yDeg + 180) % 360 + 360) % 360 - 180;
+                rDeg = ((rDeg + 180) % 360 + 360) % 360 - 180;
+            } else {
+                const ang = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+                yDeg = THREE.MathUtils.radToDeg(ang.y);
+                pDeg = THREE.MathUtils.radToDeg(q3pitch);
+                rDeg = physicalRoll(camera);
+            }
+
+            if (lastY !== null && Math.abs(yDeg - lastY) > 180) {
+                yawData.push(null); pitchData.push(null); rollData.push(null);
+                yawData.shift(); pitchData.shift(); rollData.shift();
+            }
+            yawData.push(yDeg); pitchData.push(pDeg); rollData.push(rDeg);
+            yawData.shift(); pitchData.shift(); rollData.shift();
+            lastY = yDeg;
+            angleChart.update('none');
+
+            document.getElementById('s-pitch').innerText = pDeg.toFixed(2) + '°';
+            document.getElementById('s-yaw').innerText = yDeg.toFixed(2) + '°';
+            const rollEl = document.getElementById('s-roll');
+            rollEl.innerText = rDeg.toFixed(2) + '°';
+            rollEl.style.color = Math.abs(rDeg) > 5 ? '#ff4444' : '#ffcc00';
+
+            const warn = document.getElementById('gl-warn');
+            const isAtPole = Math.abs(pDeg) >= 89.9;
+            const yawJump = yawData[199] !== null && yawData[198] !== null ? Math.abs(yawData[199] - yawData[198]) : 0;
+            const isBroken = isAtPole && yawJump > 45;
+
+            if (currentMode === 2 && isBroken) {
+                warn.classList.add('show');
+            } else {
+                warn.classList.remove('show');
+            }
+        }
+
+        addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+
+        // ===== 核心微積分 =====
+        function integrateOrientation() {
+            if (currentMode === 1) return;
+
+            const q = inX;
+            const r = inY;
+            inX = 0; inY = 0;
+
+            if (currentMode === 2) {
+                e2.pitch += q;
+                e2.pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, e2.pitch));
+
+                const cos_pitch = Math.cos(e2.pitch);
+                e2.yaw += r / cos_pitch;
+                e2.roll = 0;
+
+                camera.rotation.set(e2.pitch, e2.yaw, e2.roll, 'YXZ');
+            } else if (currentMode === 3) {
+                q3yaw += r;
+                q3pitch += q;
+                const lim = limited ? PITCH_90 : PITCH_FOLD;
+                q3pitch = Math.max(-lim, Math.min(lim, q3pitch));
+                const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q3yaw);
+                const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), q3pitch);
+                q3.copy(qy).multiply(qx);
+                camera.quaternion.copy(q3);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateInfiniteMaze();
+
+            // ==========================================
+            // 後室生物 (Entity) 行為：盯著玩家並臨近消失
+            // ==========================================
+            const playerPos = camera.position;
+            for (let i = entities.length - 1; i >= 0; i--) {
+                const entity = entities[i];
+                // 盯著玩家（BillboardBehavior）
+                entity.mesh.lookAt(playerPos);
+
+                // 計算與玩家的距離
+                const distToPlayer = playerPos.distanceTo(entity.mesh.position);
+
+                // 消失邏輯
+                if (entity.state === 'idle' && distToPlayer < entity.proximityThreshold) {
+                    entity.state = 'disappearing';
+                }
+
+                if (entity.state === 'disappearing') {
+                    // 逐漸變得透明
+                    entity.opacity -= 0.05; // 消失速度
+                    entity.mesh.material.opacity = entity.opacity;
+                    if (entity.opacity <= 0) {
+                        // 從場景移除
+                        scene.remove(entity.mesh);
+                        entities.splice(i, 1); // 從陣列移除
+                    }
+                }
+            }
+
+            integrateOrientation();
+            applyMovement();
+            updateChart();
+            renderer.render(scene, camera);
+        }
+
+        initChart(); setAlg('euler'); animate();
+    </script>
+</body>
+
+</html>
