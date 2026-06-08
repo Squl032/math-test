@@ -992,9 +992,14 @@ const bullets = [];
 let shootCooldown = 0;
 const muzzleFlash = document.getElementById('muzzle-flash');
 let muzzleTimer = 0;
+const fireAudio = new Audio('fire.mp3');
+fireAudio.volume = 0.6;
 
 function shoot() {
     if (!gameStarted || !playerAlive) return;
+    const s = fireAudio.cloneNode();
+    s.volume = 0.6;
+    s.play().catch(() => {});
     const bulletGeo = new THREE.SphereGeometry(0.12, 6, 6);
     const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffee00 });
     const bullet = new THREE.Mesh(bulletGeo, bulletMat);
