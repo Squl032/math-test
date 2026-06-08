@@ -753,7 +753,6 @@ function animate() {
     updateAlmondWaters();
     updateCrawlers();
     updateFlicker();
-    updateExitDoor();
     updateBreathing();
     updateChart();
     renderer.render(scene, camera);
@@ -1107,7 +1106,8 @@ function updateAvatarSystem() {
     if (muzzleTimer > 0) { muzzleTimer--; if (muzzleTimer<=0) muzzleFlash.classList.remove('show'); }
     if (damageFlashTimer > 0) { damageFlashTimer--; if (damageFlashTimer<=0) damageFlash.classList.remove('show'); }
 
-    if (!activeMob.alive || !playerAlive || !monsterEnabled || !gameStarted) return;
+    const paused = document.pointerLockElement !== document.body;
+    if (!activeMob.alive || !playerAlive || !monsterEnabled || !gameStarted || paused) return;
 
     const sp        = activeMob.sprite;
     const playerPos = camera.position;
@@ -1449,8 +1449,10 @@ function spawnCrawler() {
 }
 
 function updateCrawlers() {
-    // 隨機補充
-    if (gameStarted && playerAlive && crawlers.length < CRAWLER_MAX && Math.random() < 0.006) {
+    const crawlerActive = monsterEnabled && document.pointerLockElement === document.body;
+
+    // 隨機補充（怪物關閉時不生成）
+    if (crawlerActive && gameStarted && playerAlive && crawlers.length < CRAWLER_MAX && Math.random() < 0.006) {
         spawnCrawler();
     }
 
@@ -1466,8 +1468,8 @@ function updateCrawlers() {
         // 朝玩家轉（僅水平旋轉）
         cr.mesh.rotation.y = Math.atan2(dx, dz);
 
-        // 攻擊判定
-        if (distXZ < CRAWLER_ATTACK_RANGE && playerAlive) {
+        // 攻擊判定（暫停或怪物關閉時不攻擊）
+        if (crawlerActive && distXZ < CRAWLER_ATTACK_RANGE && playerAlive) {
             if (cr.attackCooldown > 0) {
                 cr.attackCooldown--;
             } else {
@@ -1587,69 +1589,6 @@ function updateBreathing() {
     }
 }
 
-// ==========================================
-// 假出口門系統
-// ==========================================
-let exitDoor          = null;
-let exitDoorCountdown = 1200; // 約 20 秒後首次出現
-
-function createExitDoorMesh() {
-    const c = document.createElement('canvas');
-    c.width = 128; c.height = 256;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#001800'; ctx.fillRect(0, 0, 128, 256);
-    ctx.strokeStyle = '#00ff55'; ctx.lineWidth = 5;
-    ctx.strokeRect(3, 3, 122, 250);
-    const grad = ctx.createRadialGradient(64, 128, 10, 64, 128, 80);
-    grad.addColorStop(0, 'rgba(0,255,80,0.25)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 256);
-    ctx.fillStyle = '#00ff55';
-    ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('EXIT', 64, 80);
-    ctx.font = '18px monospace';
-    ctx.fillText('出口', 64, 115);
-    ctx.fillStyle = '#00cc44';
-    ctx.font = '13px monospace';
-    ctx.fillText('→ Level 1 →', 64, 158);
-    ctx.fillText('Enter to escape', 64, 185);
-    ctx.fillStyle = '#00ff55';
-    ctx.font = 'bold 28px monospace';
-    ctx.fillText('⬆', 64, 44);
-    const tex = new THREE.CanvasTexture(c);
-    const geo = new THREE.PlaneGeometry(5, 10);
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
-    return new THREE.Mesh(geo, mat);
-}
-
-function updateExitDoor() {
-    if (!gameStarted || !playerAlive) return;
-    exitDoorCountdown--;
-    if (!exitDoor && exitDoorCountdown <= 0) {
-        exitDoor = createExitDoorMesh();
-        const pos = safeSpawnPosition(camera.position.x, camera.position.z, 18, 45);
-        pos.y = 5;
-        exitDoor.position.copy(pos);
-        exitDoor.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
-        scene.add(exitDoor);
-        exitDoorCountdown = 1800 + Math.floor(Math.random() * 1200);
-        showPickupMsg('🚪 偵測到出口訊號...');
-    }
-    if (!exitDoor) return;
-    const dx = camera.position.x - exitDoor.position.x;
-    const dz = camera.position.z - exitDoor.position.z;
-    if (Math.sqrt(dx*dx + dz*dz) < 2.8) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist  = 85 + Math.random() * 65;
-        camera.position.x += Math.cos(angle) * dist;
-        camera.position.z += Math.sin(angle) * dist;
-        scene.remove(exitDoor);
-        exitDoor = null;
-        showPickupMsg('🚪 騙你的！Welcome to Level 1...');
-        // 白色閃光
-        ambientLight.intensity = 4.0;
-        flickerFrames = 35;
-    }
-}
 
 initChart(); setAlg('euler'); animate();
 
