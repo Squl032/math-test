@@ -104,7 +104,7 @@
         <div class="hint-text">按下 ESC 即可操作此選單</div>
     </div>
 
-    <!-- HP 血條 (player only; mob HP sections are dynamically inserted by main.js) -->
+    <!-- HP 血條 + 耐力條 (mob HP sections are dynamically inserted by main.js) -->
     <div id="hp-overlay">
         <div class="hp-section">
             <div class="hp-label">🧍 玩家 HP</div>
@@ -112,6 +112,13 @@
                 <div id="player-hp-bar" class="hp-bar player-bar" style="width:100%"></div>
             </div>
             <span id="player-hp-num" class="hp-num">100/100</span>
+        </div>
+        <div class="hp-section">
+            <div class="hp-label">⚡ 耐力</div>
+            <div class="hp-bar-container">
+                <div id="stamina-bar" class="hp-bar" style="width:100%;background:linear-gradient(90deg,#1155dd,#55aaff)"></div>
+            </div>
+            <span id="stamina-num" class="hp-num">100/100</span>
         </div>
     </div>
 

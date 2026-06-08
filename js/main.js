@@ -91,10 +91,60 @@ function addWall(x, z, scaleX = 1, scaleZ = 1) {
     tex.needsUpdate = true;
     mesh.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
     scene.add(mesh);
+    if (Math.random() < 0.28) addWallGraffiti(x, z, scaleX, scaleZ);
 
     mesh.updateMatrixWorld();
     const box = new THREE.Box3().setFromObject(mesh);
     colliders.push({ box: box, center: new THREE.Vector3(x, 7.5, z) });
+}
+
+// ── 後室塗鴉 ──
+const GRAFFITI_MSGS = [
+    '別往前走', '← 出口', 'Level 0', '你聽到了嗎?',
+    'IT CAN HEAR YOU', '不要跑  牠更快', 'no escape',
+    '已有人嘗試過了', 'Turn Back', '牠知道你在這',
+    'H E L P', '別開燈', '往右走 →', "you're already dead",
+    '怎麼辦', 'FIND THE EXIT', '別回頭', 'LEVEL 0',
+    '嗯 是我 我在這', 'smells like mold', 'RUN',
+];
+function addWallGraffiti(wx, wz, sx, sz) {
+    const msg = GRAFFITI_MSGS[Math.floor(Math.random() * GRAFFITI_MSGS.length)];
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 80;
+    const gctx = c.getContext('2d');
+    const colors = ['#cc3333', '#33cc55', '#cccc33', '#cc8833', '#aaaaaa'];
+    gctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+    const fs = 16 + Math.floor(Math.random() * 14);
+    gctx.font = `bold ${fs}px monospace`;
+    gctx.textAlign = 'center';
+    if (Math.random() < 0.4) {   // 刮痕
+        gctx.strokeStyle = gctx.fillStyle;
+        gctx.globalAlpha = 0.45;
+        gctx.lineWidth = 1.5;
+        for (let i = 0; i < 3; i++) {
+            gctx.beginPath();
+            gctx.moveTo(Math.random()*256, Math.random()*80);
+            gctx.lineTo(Math.random()*256, Math.random()*80);
+            gctx.stroke();
+        }
+        gctx.globalAlpha = 1.0;
+    }
+    gctx.fillText(msg, 128, 50);
+    const face = Math.floor(Math.random() * 4);
+    const gy   = 3 + Math.random() * 6;
+    let gx = wx, gz = wz, rotY = 0, gw = 4;
+    if      (face === 0) { gz = wz + sz * 5 + 0.08; rotY = 0;           gw = Math.min(sx * 7, 5); }
+    else if (face === 1) { gz = wz - sz * 5 - 0.08; rotY = Math.PI;     gw = Math.min(sx * 7, 5); }
+    else if (face === 2) { gx = wx + sx * 5 + 0.08; rotY = -Math.PI/2;  gw = Math.min(sz * 7, 5); }
+    else                 { gx = wx - sx * 5 - 0.08; rotY =  Math.PI/2;  gw = Math.min(sz * 7, 5); }
+    const gm = new THREE.Mesh(
+        new THREE.PlaneGeometry(gw, 1.8),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true,
+            side: THREE.DoubleSide, depthWrite: false, opacity: 0.88 })
+    );
+    gm.position.set(gx, gy, gz);
+    gm.rotation.y = rotY;
+    scene.add(gm);
 }
 
 // ==========================================
@@ -265,15 +315,33 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, q: false };
+let sprintToggle = false; // Q 切換衝刺（toggle）
+
+// ── Konami Code 無敵模式 ──
+let godMode = false;
+const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+let konamiIdx = 0;
+
 document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
+    // Konami 輸入偵測
+    if (e.key === KONAMI[konamiIdx]) {
+        konamiIdx++;
+        if (konamiIdx === KONAMI.length) {
+            konamiIdx = 0;
+            godMode = !godMode;
+            showPickupMsg(godMode ? '👾 GOD MODE ON — 無限體力 & 無限血量' : '👾 GOD MODE OFF');
+        }
+    } else {
+        konamiIdx = e.key === KONAMI[0] ? 1 : 0;
+    }
     if (k === 'w') keys.w = true;
     if (k === 'a') keys.a = true;
     if (k === 's') keys.s = true;
     if (k === 'd') keys.d = true;
     if (k === ' ') keys.space = true;
     if (e.key === 'Shift') keys.shift = true;
-    if (k === 'q') keys.q = true;
+    if (k === 'q') { sprintToggle = !sprintToggle; keys.q = sprintToggle; }
 
     if (k === 'p') {
         camera.position.set(0, 5, 0);
@@ -294,7 +362,7 @@ document.addEventListener('keyup', e => {
     if (k === 'd') keys.d = false;
     if (k === ' ') keys.space = false;
     if (e.key === 'Shift') keys.shift = false;
-    if (k === 'q') keys.q = false;
+    // Q 是 toggle，keyup 不重置
 });
 
 function setAlg(a) {
@@ -438,7 +506,9 @@ function applyMovement() {
 
     if (keys.shift) {
         targetHeight = 2.5;
-        baseSpeed = Math.min(0.10, BASE_WALK); // 蹲伏速度不超過怪物
+        baseSpeed = Math.min(0.10, BASE_WALK);
+        // 蹲下時強制取消衝刺
+        if (sprintToggle) { sprintToggle = false; keys.q = false; }
     } else if (keys.q) {
         baseSpeed = BASE_SPRINT; // 衝刺速度永遠比怪物快
     }
@@ -495,6 +565,28 @@ function applyMovement() {
             knockbackVel.z *= -0.3;
         }
         knockbackVel.multiplyScalar(0.75);
+    }
+
+    // ── 耐力：衝刺消耗，不動/走路回復 ──
+    const isActuallyMoving = moveDir.lengthSq() > 0;
+    if (keys.q && isActuallyMoving && !godMode) {
+        stamina = Math.max(0, stamina - STAMINA_DRAIN);
+        if (stamina <= 0) { sprintToggle = false; keys.q = false; }
+    } else {
+        stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN);
+    }
+    const _stBar = document.getElementById('stamina-bar');
+    const _stNum = document.getElementById('stamina-num');
+    if (_stBar) _stBar.style.width = (stamina / STAMINA_MAX * 100) + '%';
+    if (_stNum) _stNum.textContent = Math.ceil(stamina) + '/100';
+
+    // ── 腳步聲 ──
+    if (isActuallyMoving && isGrounded && audioCtx) {
+        footstepTimer--;
+        if (footstepTimer <= 0) {
+            footstepTimer = keys.q ? 11 : 20;
+            playFootstep(keys.q);
+        }
     }
 }
 
@@ -660,6 +752,9 @@ function animate() {
     updateAvatarSystem();
     updateAlmondWaters();
     updateCrawlers();
+    updateFlicker();
+    updateExitDoor();
+    updateBreathing();
     updateChart();
     renderer.render(scene, camera);
 }
@@ -672,6 +767,10 @@ let playerHP = PLAYER_MAX_HP;
 let playerAlive = true;
 let playerDamageCooldown = 0;
 const knockbackVel = new THREE.Vector3(0, 0, 0);
+const STAMINA_MAX   = 100;
+let   stamina       = STAMINA_MAX;
+const STAMINA_DRAIN = 0.7;   // 每幀衝刺消耗
+const STAMINA_REGEN = 0.22;  // 每幀回復
 const AVATAR_ATTACK_RANGE    = 2.8;
 const AVATAR_HIT_RADIUS      = 2.5;
 const CHASE_MAX_DIST         = 100;
@@ -919,7 +1018,7 @@ const damageFlash = document.getElementById('damage-flash');
 let damageFlashTimer = 0;
 
 function hurtPlayer(dmg, attackerPos) {
-    if (!playerAlive) return;
+    if (!playerAlive || godMode) return;
     playerHP -= dmg;
     updateHPBars();
     damageFlash.classList.add('show');
@@ -1013,6 +1112,17 @@ function updateAvatarSystem() {
 
     sp.lookAt(playerPos);
 
+    // ── 怪物立體聲：左右耳方向感 ──
+    if (activeMob.panner) {
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        right.y = 0; right.normalize();
+        const toMob = new THREE.Vector3(sp.position.x - playerPos.x, 0, sp.position.z - playerPos.z);
+        if (toMob.lengthSq() > 0.01) {
+            toMob.normalize();
+            activeMob.panner.pan.value = Math.max(-1, Math.min(1, right.dot(toMob)));
+        }
+    }
+
     // ── A* 尋路（遠時更頻繁重算追上玩家）──
     if (!sp.userData.pathTimer) sp.userData.pathTimer = 0;
     sp.userData.pathTimer--;
@@ -1039,10 +1149,25 @@ function updateAvatarSystem() {
     }
     sp.userData.lastPos.copy(sp.position);
 
-    // ── 追趕加速：距離越遠速度越快，但上限低於玩家衝刺速度 ──
-    const catchupMult = dist > 40 ? Math.min(2.5, 1 + (dist - 40) / 35) : 1;
-    const sprintCap   = Math.max(0.48, AVATAR_SPEED * 1.6) * 0.85;
-    const mobSpeed    = Math.min(AVATAR_SPEED * catchupMult, sprintCap);
+    // ── 指數追趕加速（dist > 25 開始，每單位距離乘 1.028，上限 6 倍）──
+    const catchupMult = Math.min(6.0, Math.pow(1.028, Math.max(0, dist - 25)));
+    const mobSpeed    = AVATAR_SPEED * catchupMult;
+
+    // ── 距離過遠計時：dist > 100 持續 220 幀（≈3.6s）→ 強制瞬移到玩家附近 ──
+    if (!sp.userData.farFrames) sp.userData.farFrames = 0;
+    if (dist > 100) {
+        sp.userData.farFrames++;
+        if (sp.userData.farFrames >= 220) {
+            const newPos = safeSpawnPosition(playerPos.x, playerPos.z, 18, 30);
+            sp.position.copy(newPos);
+            sp.userData.farFrames   = 0;
+            sp.userData.stuckFrames = 0;
+            sp.userData.nextWP      = null;
+            sp.userData.pathTimer   = 0;
+        }
+    } else {
+        sp.userData.farFrames = 0;
+    }
 
     // ── 移動（擊退優先，否則沿路徑）──
     const kb = sp.userData.kbVel;
@@ -1358,6 +1483,169 @@ function updateCrawlers() {
     }
 }
 
+// ==========================================
+// 閃燈系統
+// ==========================================
+let flickerFrames = 0;
+function updateFlicker() {
+    if (flickerFrames > 0) {
+        flickerFrames--;
+        const v = Math.random() < 0.25 ? 0 : 0.15 + Math.random() * 0.85;
+        ambientLight.intensity = 0.5 * v;
+        dirLight.intensity     = 0.4 * v;
+    } else {
+        ambientLight.intensity = 0.5;
+        dirLight.intensity     = 0.4;
+        if (Math.random() < 0.0018) {
+            flickerFrames = 8 + Math.floor(Math.random() * 28);
+        }
+    }
+}
+
+// ==========================================
+// Web Audio：腳步聲、喘氣聲、心跳聲、立體聲
+// ==========================================
+let audioCtx       = null;
+let footstepTimer  = 0;
+let footSide       = 1;
+let breathTimer    = 200;
+
+function playFootstep(sprinting) {
+    if (!audioCtx) return;
+    const freq = sprinting ? 180 + Math.random()*60 : 90 + Math.random()*40;
+    const dur  = sprinting ? 0.07 : 0.12;
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const pan  = audioCtx.createStereoPanner();
+    pan.pan.value = footSide * 0.28; footSide *= -1;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.25, audioCtx.currentTime + dur);
+    gain.gain.setValueAtTime(sprinting ? 0.3 : 0.22, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(pan); pan.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+}
+
+function playBreath(panting) {
+    if (!audioCtx) return;
+    const dur = panting ? 0.28 : 0.45;
+    const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src    = audioCtx.createBufferSource();
+    const filter = audioCtx.createBiquadFilter();
+    const gain   = audioCtx.createGain();
+    src.buffer = buf;
+    filter.type = 'bandpass';
+    filter.frequency.value = panting ? 700 : 450;
+    filter.Q.value = 1.8;
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(panting ? 0.26 : 0.16, audioCtx.currentTime + 0.08);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + dur);
+    src.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+    src.start(); src.stop(audioCtx.currentTime + dur + 0.05);
+}
+
+function playHeartbeat() {
+    if (!audioCtx) return;
+    const thump = (delay, f, d) => {
+        const osc = audioCtx.createOscillator();
+        const g   = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, audioCtx.currentTime + delay);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.4, audioCtx.currentTime + delay + d);
+        g.gain.setValueAtTime(0.55, audioCtx.currentTime + delay);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + d);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + delay);
+        osc.stop(audioCtx.currentTime + delay + d);
+    };
+    thump(0,    65, 0.11);
+    thump(0.20, 52, 0.09);
+}
+
+function updateBreathing() {
+    if (!gameStarted || !audioCtx) return;
+    breathTimer--;
+    const panting = keys.q && stamina > 5;
+    if (breathTimer <= 0) {
+        playBreath(panting);
+        breathTimer = panting
+            ? 80  + Math.floor(Math.random() * 25)
+            : 200 + Math.floor(Math.random() * 80);
+    }
+    // 低血量心跳
+    if (playerAlive && playerHP < 35) {
+        const interval = Math.max(22, Math.floor(25 + (playerHP / 35) * 38));
+        if (frameCount % interval === 0) playHeartbeat();
+    }
+}
+
+// ==========================================
+// 假出口門系統
+// ==========================================
+let exitDoor          = null;
+let exitDoorCountdown = 1200; // 約 20 秒後首次出現
+
+function createExitDoorMesh() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#001800'; ctx.fillRect(0, 0, 128, 256);
+    ctx.strokeStyle = '#00ff55'; ctx.lineWidth = 5;
+    ctx.strokeRect(3, 3, 122, 250);
+    const grad = ctx.createRadialGradient(64, 128, 10, 64, 128, 80);
+    grad.addColorStop(0, 'rgba(0,255,80,0.25)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 256);
+    ctx.fillStyle = '#00ff55';
+    ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('EXIT', 64, 80);
+    ctx.font = '18px monospace';
+    ctx.fillText('出口', 64, 115);
+    ctx.fillStyle = '#00cc44';
+    ctx.font = '13px monospace';
+    ctx.fillText('→ Level 1 →', 64, 158);
+    ctx.fillText('Enter to escape', 64, 185);
+    ctx.fillStyle = '#00ff55';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText('⬆', 64, 44);
+    const tex = new THREE.CanvasTexture(c);
+    const geo = new THREE.PlaneGeometry(5, 10);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    return new THREE.Mesh(geo, mat);
+}
+
+function updateExitDoor() {
+    if (!gameStarted || !playerAlive) return;
+    exitDoorCountdown--;
+    if (!exitDoor && exitDoorCountdown <= 0) {
+        exitDoor = createExitDoorMesh();
+        const pos = safeSpawnPosition(camera.position.x, camera.position.z, 18, 45);
+        pos.y = 5;
+        exitDoor.position.copy(pos);
+        exitDoor.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
+        scene.add(exitDoor);
+        exitDoorCountdown = 1800 + Math.floor(Math.random() * 1200);
+        showPickupMsg('🚪 偵測到出口訊號...');
+    }
+    if (!exitDoor) return;
+    const dx = camera.position.x - exitDoor.position.x;
+    const dz = camera.position.z - exitDoor.position.z;
+    if (Math.sqrt(dx*dx + dz*dz) < 2.8) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist  = 85 + Math.random() * 65;
+        camera.position.x += Math.cos(angle) * dist;
+        camera.position.z += Math.sin(angle) * dist;
+        scene.remove(exitDoor);
+        exitDoor = null;
+        showPickupMsg('🚪 騙你的！Welcome to Level 1...');
+        // 白色閃光
+        ambientLight.intensity = 4.0;
+        flickerFrames = 35;
+    }
+}
+
 initChart(); setAlg('euler'); animate();
 
 // ==========================================
@@ -1385,6 +1673,18 @@ document.getElementById('blocker').addEventListener('click', () => {
     }
 
     if (!gameStarted) {
+        // Web Audio API 初始化（立體聲 panner）
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mobs.forEach(m => {
+                try {
+                    const src = audioCtx.createMediaElementSource(m.audio);
+                    m.panner  = audioCtx.createStereoPanner();
+                    src.connect(m.panner);
+                    m.panner.connect(audioCtx.destination);
+                } catch(e) { console.warn('panner setup failed:', e); }
+            });
+        }
         mobs.forEach(m => {
             m.audio.play().catch(e => console.log(`${m.def.id} audio fail:`, e));
             m.audioStarted = true;
