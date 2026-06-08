@@ -383,7 +383,7 @@
 
 <body>
 
-    <div id="blocker" onclick="document.body.requestPointerLock()">
+    <div id="blocker">
         <div id="start-msg">進入 The Backrooms (點擊畫面)</div>
         <div class="sub-msg">按 ESC 可暫停並開啟設定選單</div>
     </div>
@@ -1001,6 +1001,34 @@
         }
 
         initChart(); setAlg('euler'); animate();
+        // ==========================================
+        // 後室背景音樂系統 (無限循環歌單)
+        // ==========================================
+        // 這裡填入你的音樂檔名，有幾首就填幾首
+        const playlist = ['bgm1.mp3']; 
+        let currentTrack = 0;
+        const bgm = new Audio();
+        bgm.volume = 0.4; // 音量控制 (0.0 到 1.0，建議不要太大聲以免吵到報告)
+        let isMusicStarted = false;
+
+        // 當一首歌播完時，自動切換到下一首
+        bgm.addEventListener('ended', () => {
+            currentTrack = (currentTrack + 1) % playlist.length;
+            bgm.src = playlist[currentTrack];
+            bgm.play();
+        });
+
+        // 綁定點擊事件：點擊畫面鎖定滑鼠時，同步啟動音樂
+        document.getElementById('blocker').addEventListener('click', () => {
+            document.body.requestPointerLock();
+            
+            // 確保音樂只會被啟動一次
+            if (!isMusicStarted) {
+                bgm.src = playlist[currentTrack];
+                bgm.play().catch(e => console.log("音樂播放失敗，請確認檔名是否正確:", e));
+                isMusicStarted = true;
+            }
+        });
     </script>
 </body>
 
