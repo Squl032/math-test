@@ -81,24 +81,37 @@ const chunkSize = 40;
 const wallGeo = new THREE.BoxGeometry(10, 15, 10);
 const wallpaperMat = new THREE.MeshStandardMaterial({ map: createWallpaperTexture(), roughness: 0.8 });
 
-function addWall(x, z, scaleX = 1, scaleZ = 1) {
-    const mesh = new THREE.Mesh(wallGeo, wallpaperMat);
-    mesh.position.set(x, 7.5, z);
-    mesh.scale.set(scaleX, 1, scaleZ);
-
-    const tex = wallpaperMat.map.clone();
-    tex.repeat.set(scaleX * 2, 1);
-    tex.needsUpdate = true;
-    mesh.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
-    scene.add(mesh);
-    if (Math.random() < 0.28) addWallGraffiti(x, z, scaleX, scaleZ);
-
-    mesh.updateMatrixWorld();
-    const box = new THREE.Box3().setFromObject(mesh);
-    colliders.push({ box: box, center: new THREE.Vector3(x, 7.5, z) });
+// ── 牆壁材質池：同 scaleX 的牆共用一個 Material，避免無限 clone ──
+const _wallMatPool = new Map();
+function getWallMat(scaleX) {
+    const k = Math.round(scaleX * 4); // 精度 0.25
+    if (!_wallMatPool.has(k)) {
+        const tex = wallpaperMat.map.clone();
+        tex.repeat.set(Math.max(0.5, scaleX) * 2, 1);
+        tex.needsUpdate = true;
+        _wallMatPool.set(k, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
+    }
+    return _wallMatPool.get(k);
 }
 
-// ── 後室塗鴉 ──
+// ── Chunk mesh 追蹤：key → mesh[] ──
+const chunkMeshes = new Map();
+let _activeChunkKey = null;
+
+function addWall(x, z, scaleX = 1, scaleZ = 1) {
+    const mesh = new THREE.Mesh(wallGeo, getWallMat(scaleX));
+    mesh.position.set(x, 7.5, z);
+    mesh.scale.set(scaleX, 1, scaleZ);
+    scene.add(mesh);
+    if (Math.random() < 0.15) addWallGraffiti(x, z, scaleX, scaleZ);
+
+    mesh.updateMatrixWorld();
+    colliders.push({ box: new THREE.Box3().setFromObject(mesh), center: new THREE.Vector3(x, 7.5, z) });
+
+    if (_activeChunkKey) chunkMeshes.get(_activeChunkKey)?.push(mesh);
+}
+
+// ── 後室塗鴉：啟動時預烘焙所有 texture，全程共用 ──
 const GRAFFITI_MSGS = [
     '別往前走', '← 出口', 'Level 0', '你聽到了嗎?',
     'IT CAN HEAR YOU', '不要跑  牠更快', 'no escape',
@@ -107,44 +120,35 @@ const GRAFFITI_MSGS = [
     '怎麼辦', 'FIND THE EXIT', '別回頭', 'LEVEL 0',
     '嗯 是我 我在這', 'smells like mold', 'RUN',
 ];
+const _colors = ['#cc3333', '#33cc55', '#cccc33', '#cc8833', '#aaaaaa'];
+const GRAFFITI_GEO  = new THREE.PlaneGeometry(4, 1.8); // 共用
+const GRAFFITI_MATS = GRAFFITI_MSGS.map((msg, i) => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 80;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = _colors[i % _colors.length];
+    ctx.font = `bold ${17 + (i % 6) * 3}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(msg, 128, 50);
+    return new THREE.MeshBasicMaterial({
+        map: new THREE.CanvasTexture(c),
+        transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.88,
+    });
+});
+
 function addWallGraffiti(wx, wz, sx, sz) {
-    const msg = GRAFFITI_MSGS[Math.floor(Math.random() * GRAFFITI_MSGS.length)];
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 80;
-    const gctx = c.getContext('2d');
-    const colors = ['#cc3333', '#33cc55', '#cccc33', '#cc8833', '#aaaaaa'];
-    gctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-    const fs = 16 + Math.floor(Math.random() * 14);
-    gctx.font = `bold ${fs}px monospace`;
-    gctx.textAlign = 'center';
-    if (Math.random() < 0.4) {   // 刮痕
-        gctx.strokeStyle = gctx.fillStyle;
-        gctx.globalAlpha = 0.45;
-        gctx.lineWidth = 1.5;
-        for (let i = 0; i < 3; i++) {
-            gctx.beginPath();
-            gctx.moveTo(Math.random()*256, Math.random()*80);
-            gctx.lineTo(Math.random()*256, Math.random()*80);
-            gctx.stroke();
-        }
-        gctx.globalAlpha = 1.0;
-    }
-    gctx.fillText(msg, 128, 50);
+    const mat  = GRAFFITI_MATS[Math.floor(Math.random() * GRAFFITI_MATS.length)];
     const face = Math.floor(Math.random() * 4);
     const gy   = 3 + Math.random() * 6;
-    let gx = wx, gz = wz, rotY = 0, gw = 4;
-    if      (face === 0) { gz = wz + sz * 5 + 0.08; rotY = 0;           gw = Math.min(sx * 7, 5); }
-    else if (face === 1) { gz = wz - sz * 5 - 0.08; rotY = Math.PI;     gw = Math.min(sx * 7, 5); }
-    else if (face === 2) { gx = wx + sx * 5 + 0.08; rotY = -Math.PI/2;  gw = Math.min(sz * 7, 5); }
-    else                 { gx = wx - sx * 5 - 0.08; rotY =  Math.PI/2;  gw = Math.min(sz * 7, 5); }
-    const gm = new THREE.Mesh(
-        new THREE.PlaneGeometry(gw, 1.8),
-        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true,
-            side: THREE.DoubleSide, depthWrite: false, opacity: 0.88 })
-    );
+    let gx = wx, gz = wz, rotY = 0;
+    if      (face === 0) { gz = wz + sz * 5 + 0.08; rotY = 0;          }
+    else if (face === 1) { gz = wz - sz * 5 - 0.08; rotY = Math.PI;    }
+    else if (face === 2) { gx = wx + sx * 5 + 0.08; rotY = -Math.PI/2; }
+    else                 { gx = wx - sx * 5 - 0.08; rotY =  Math.PI/2; }
+    const gm = new THREE.Mesh(GRAFFITI_GEO, mat);
     gm.position.set(gx, gy, gz);
     gm.rotation.y = rotY;
     scene.add(gm);
+    if (_activeChunkKey) chunkMeshes.get(_activeChunkKey)?.push(gm);
 }
 
 // ==========================================
@@ -194,6 +198,8 @@ function generateChunk(cx, cz) {
     const key = `${cx},${cz}`;
     if (generatedChunks.has(key)) return;
     generatedChunks.add(key);
+    chunkMeshes.set(key, []);
+    _activeChunkKey = key;
 
     const ox = cx * chunkSize;   // chunk 中心 X
     const oz = cz * chunkSize;   // chunk 中心 Z
@@ -258,11 +264,37 @@ function generateChunk(cx, cz) {
             entities.push(createEntity({ x: ex, z: ez }));
         }
     }
+    _activeChunkKey = null;
 }
 
+const CHUNK_CLEANUP_R = 4; // 超過這個 chunk 距離就清除
 function updateInfiniteMaze() {
     const cx = Math.floor(camera.position.x / chunkSize);
     const cz = Math.floor(camera.position.z / chunkSize);
+
+    // 清除太遠的 chunk（每 120 幀執行一次，避免每幀掃描）
+    if (frameCount % 120 === 0) {
+        for (const [key, meshes] of chunkMeshes) {
+            const [kcx, kcz] = key.split(',').map(Number);
+            if (Math.abs(kcx - cx) > CHUNK_CLEANUP_R || Math.abs(kcz - cz) > CHUNK_CLEANUP_R) {
+                meshes.forEach(m => scene.remove(m));
+                chunkMeshes.delete(key);
+                generatedChunks.delete(key); // 允許重新生成
+            }
+        }
+        // 清除太遠的後室生物
+        for (let i = entities.length - 1; i >= 0; i--) {
+            const e = entities[i];
+            const dx = e.mesh.position.x - camera.position.x;
+            const dz = e.mesh.position.z - camera.position.z;
+            if (Math.sqrt(dx*dx + dz*dz) > CHUNK_CLEANUP_R * chunkSize) {
+                scene.remove(e.mesh);
+                entities.splice(i, 1);
+            }
+        }
+    }
+
+    // 生成附近 chunk
     for (let i = -2; i <= 2; i++) {
         for (let j = -2; j <= 2; j++) {
             generateChunk(cx + i, cz + j);
@@ -994,14 +1026,15 @@ let muzzleTimer = 0;
 const fireAudio = new Audio('fire.mp3');
 fireAudio.volume = 0.6;
 
+const _bulletGeo = new THREE.SphereGeometry(0.12, 4, 4); // 共用，低多邊形
+const _bulletMat = new THREE.MeshBasicMaterial({ color: 0xffee00 });
+
 function shoot() {
     if (!gameStarted || !playerAlive) return;
     const s = fireAudio.cloneNode();
     s.volume = 0.6;
     s.play().catch(() => {});
-    const bulletGeo = new THREE.SphereGeometry(0.12, 6, 6);
-    const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffee00 });
-    const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+    const bullet = new THREE.Mesh(_bulletGeo, _bulletMat);
     bullet.position.copy(camera.position);
     const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
     bullet.position.addScaledVector(forward, 1.0);
