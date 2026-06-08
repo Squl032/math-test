@@ -831,7 +831,7 @@ const _mcBox = new THREE.Box3();
 
 // A* pathfinding
 const AStarNav = (() => {
-    const CELL = 4, GRID_R = 20, MAX_ITER = 500;
+    const CELL = 4, GRID_R = 28, MAX_ITER = 900;
     const tv = new THREE.Vector3(0, 4, 0);
     const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
     return {
@@ -1013,13 +1013,36 @@ function updateAvatarSystem() {
 
     sp.lookAt(playerPos);
 
-    // ── A* 尋路（每 45 幀重算一次）──
+    // ── A* 尋路（遠時更頻繁重算追上玩家）──
     if (!sp.userData.pathTimer) sp.userData.pathTimer = 0;
     sp.userData.pathTimer--;
+    const pathInterval = dist > 50 ? 18 : 40;
     if (sp.userData.pathTimer <= 0) {
-        sp.userData.pathTimer = 45;
+        sp.userData.pathTimer = pathInterval;
         sp.userData.nextWP = AStarNav.findPath(sp.position.x, sp.position.z, playerPos.x, playerPos.z);
     }
+
+    // ── 卡住偵測：連續 150 幀位移 < 0.15 → 強制重生到玩家附近 ──
+    if (!sp.userData.lastPos)    sp.userData.lastPos    = sp.position.clone();
+    if (!sp.userData.stuckFrames) sp.userData.stuckFrames = 0;
+    if (sp.position.distanceTo(sp.userData.lastPos) < 0.15) {
+        sp.userData.stuckFrames++;
+        if (sp.userData.stuckFrames >= 150) {
+            const newPos = safeSpawnPosition(playerPos.x, playerPos.z, 22, 38);
+            sp.position.copy(newPos);
+            sp.userData.stuckFrames = 0;
+            sp.userData.nextWP = null;
+            sp.userData.pathTimer = 0;
+        }
+    } else {
+        sp.userData.stuckFrames = 0;
+    }
+    sp.userData.lastPos.copy(sp.position);
+
+    // ── 追趕加速：距離越遠速度越快，但上限低於玩家衝刺速度 ──
+    const catchupMult = dist > 40 ? Math.min(2.5, 1 + (dist - 40) / 35) : 1;
+    const sprintCap   = Math.max(0.48, AVATAR_SPEED * 1.6) * 0.85;
+    const mobSpeed    = Math.min(AVATAR_SPEED * catchupMult, sprintCap);
 
     // ── 移動（擊退優先，否則沿路徑）──
     const kb = sp.userData.kbVel;
@@ -1034,12 +1057,11 @@ function updateAvatarSystem() {
         const target = wp
             ? new THREE.Vector3(wp.x, sp.position.y, wp.z)
             : playerPos;
-        // 若已到達 waypoint，清除讓下次重算
-        if (wp && Math.hypot(sp.position.x - wp.x, sp.position.z - wp.z) < AVATAR_SPEED * 3) {
+        if (wp && Math.hypot(sp.position.x - wp.x, sp.position.z - wp.z) < mobSpeed * 3) {
             sp.userData.nextWP = null;
             sp.userData.pathTimer = 0;
         }
-        moveMonsterWithWallAvoid(sp, target, AVATAR_SPEED);
+        moveMonsterWithWallAvoid(sp, target, mobSpeed);
     }
     sp.position.y = 8;
 
