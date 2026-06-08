@@ -319,13 +319,13 @@ let sprintToggle = false; // Q 切換衝刺（toggle）
 
 // ── Konami Code 無敵模式 ──
 let godMode = false;
-const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+const KONAMI = ['arrowup','arrowup','arrowdown','arrowdown','arrowleft','arrowright','arrowleft','arrowright','b','a'];
 let konamiIdx = 0;
 
 document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
-    // Konami 輸入偵測
-    if (e.key === KONAMI[konamiIdx]) {
+    // Konami 輸入偵測（全部用 k 比對，大小寫不敏感）
+    if (k === KONAMI[konamiIdx]) {
         konamiIdx++;
         if (konamiIdx === KONAMI.length) {
             konamiIdx = 0;
@@ -333,7 +333,7 @@ document.addEventListener('keydown', e => {
             showPickupMsg(godMode ? '👾 GOD MODE ON — 無限體力 & 無限血量' : '👾 GOD MODE OFF');
         }
     } else {
-        konamiIdx = e.key === KONAMI[0] ? 1 : 0;
+        konamiIdx = k === KONAMI[0] ? 1 : 0;
     }
     if (k === 'w') keys.w = true;
     if (k === 'a') keys.a = true;
