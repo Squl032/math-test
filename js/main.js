@@ -715,7 +715,7 @@ addEventListener('resize', () => {
 });
 
 // ==========================================
-// 核心旋轉積分（這是整個報告最重要的函式）
+// 核心旋轉積分
 //
 // 每幀根據滑鼠輸入 (inX=上下, inY=左右) 更新攝影機朝向。
 // 同一份滑鼠輸入，尤拉角和四元數的處理方式完全不同。
@@ -741,12 +741,12 @@ function integrateOrientation() {
         //    當 pitch → 90°：cos(90°) = 0 → 除以零 → Yaw 瞬間發散到 ±∞
         //    這就是「萬向鎖」：俯仰軸與偏航軸重疊，損失一個自由度
         const cos_pitch = Math.cos(e2.pitch);
-        e2.yaw += r / cos_pitch; // ← 罪魁禍首：cos_pitch 接近 0 時爆炸
+        e2.yaw += r / cos_pitch; // ← cos_pitch = 0 時爆炸
 
-        e2.roll = 0; // Roll 鎖為 0（我們只想展示 pitch/yaw 的問題）
+        e2.roll = 0; // Roll 鎖為 0，保持水平
         camera.rotation.set(e2.pitch, e2.yaw, e2.roll, 'YXZ');
 
-        // ── Mode 3：四元數（永不崩潰）──
+        // ── Mode 3：四元數──
     } else if (currentMode === 3) {
         // 分別累加偏航角與俯仰角（只是純量，還不是四元數）
         q3yaw += r;
@@ -764,7 +764,7 @@ function integrateOrientation() {
             new THREE.Vector3(1, 0, 0), q3pitch  // 繞本地 X 軸俯仰
         );
 
-        // 四元數乘法：先偏航再俯仰（注意順序！乘法不可交換）
+        // 四元數乘法：先偏航再俯仰
         //   q3 = qy × qx
         // 這等價於旋轉矩陣相乘，但：
         //   1. 不存在分母為零的問題（沒有 cos(pitch) 在分母）
