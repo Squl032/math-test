@@ -13,7 +13,7 @@ dirLight.position.set(10, 50, 10);
 scene.add(dirLight);
 
 // 動態生成材質
-function createCarpetTexture() {
+function createCarpetTexture(repeat = 1500) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 256;
     const ctx = c.getContext('2d');
     for (let i = 0; i < 256; i += 2) {
@@ -25,7 +25,7 @@ function createCarpetTexture() {
     }
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(1500, 1500);
+    tex.repeat.set(repeat, repeat);
     return tex;
 }
 
@@ -48,7 +48,7 @@ function createWallpaperTexture() {
     return tex;
 }
 
-function createCeilingTexture() {
+function createCeilingTexture(repeat = 500) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 256;
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#e0dbcc'; ctx.fillRect(0, 0, 256, 256);
@@ -60,20 +60,26 @@ function createCeilingTexture() {
     }
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(500, 500);
+    tex.repeat.set(repeat, repeat);
     return tex;
 }
 
-const floorMat = new THREE.MeshStandardMaterial({ map: createCarpetTexture(), roughness: 1.0 });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(15000, 15000), floorMat);
-floor.rotation.x = -Math.PI / 2;
-scene.add(floor);
+// 地板 / 天花板（全域大平面）
+const floorMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(15000, 15000),
+    new THREE.MeshStandardMaterial({ map: createCarpetTexture(), roughness: 1.0 })
+);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.position.y = 0;
+scene.add(floorMesh);
 
-const ceilingMat = new THREE.MeshStandardMaterial({ map: createCeilingTexture(), roughness: 0.9, emissive: 0x222211 });
-const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(15000, 15000), ceilingMat);
-ceiling.rotation.x = Math.PI / 2;
-ceiling.position.y = 15;
-scene.add(ceiling);
+const ceilingMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(15000, 15000),
+    new THREE.MeshStandardMaterial({ map: createCeilingTexture(), roughness: 0.9, emissive: 0x222211 })
+);
+ceilingMesh.rotation.x = Math.PI / 2;
+ceilingMesh.position.y = 15;
+scene.add(ceilingMesh);
 
 const colliders = [];
 const generatedChunks = new Set();
@@ -99,14 +105,15 @@ const chunkMeshes = new Map();
 let _activeChunkKey = null;
 
 function addWall(x, z, scaleX = 1, scaleZ = 1) {
+    const wallY = 7.5;
     const mesh = new THREE.Mesh(wallGeo, getWallMat(scaleX));
-    mesh.position.set(x, 7.5, z);
+    mesh.position.set(x, wallY, z);
     mesh.scale.set(scaleX, 1, scaleZ);
     scene.add(mesh);
     if (Math.random() < 0.15) addWallGraffiti(x, z, scaleX, scaleZ);
 
     mesh.updateMatrixWorld();
-    colliders.push({ box: new THREE.Box3().setFromObject(mesh), center: new THREE.Vector3(x, 7.5, z) });
+    colliders.push({ box: new THREE.Box3().setFromObject(mesh), center: new THREE.Vector3(x, wallY, z) });
 
     if (_activeChunkKey) chunkMeshes.get(_activeChunkKey)?.push(mesh);
 }
@@ -121,7 +128,7 @@ const GRAFFITI_MSGS = [
     '嗯 是我 我在這', 'smells like mold', 'RUN',
 ];
 const _colors = ['#cc3333', '#33cc55', '#cccc33', '#cc8833', '#aaaaaa'];
-const GRAFFITI_GEO  = new THREE.PlaneGeometry(4, 1.8); // 共用
+const GRAFFITI_GEO = new THREE.PlaneGeometry(4, 1.8); // 共用
 const GRAFFITI_MATS = GRAFFITI_MSGS.map((msg, i) => {
     const c = document.createElement('canvas'); c.width = 256; c.height = 80;
     const ctx = c.getContext('2d');
@@ -136,14 +143,14 @@ const GRAFFITI_MATS = GRAFFITI_MSGS.map((msg, i) => {
 });
 
 function addWallGraffiti(wx, wz, sx, sz) {
-    const mat  = GRAFFITI_MATS[Math.floor(Math.random() * GRAFFITI_MATS.length)];
+    const mat = GRAFFITI_MATS[Math.floor(Math.random() * GRAFFITI_MATS.length)];
     const face = Math.floor(Math.random() * 4);
-    const gy   = 3 + Math.random() * 6;
+    const gy = 3 + Math.random() * 6;
     let gx = wx, gz = wz, rotY = 0;
-    if      (face === 0) { gz = wz + sz * 5 + 0.08; rotY = 0;          }
-    else if (face === 1) { gz = wz - sz * 5 - 0.08; rotY = Math.PI;    }
-    else if (face === 2) { gx = wx + sx * 5 + 0.08; rotY = -Math.PI/2; }
-    else                 { gx = wx - sx * 5 - 0.08; rotY =  Math.PI/2; }
+    if (face === 0) { gz = wz + sz * 5 + 0.08; rotY = 0; }
+    else if (face === 1) { gz = wz - sz * 5 - 0.08; rotY = Math.PI; }
+    else if (face === 2) { gx = wx + sx * 5 + 0.08; rotY = -Math.PI / 2; }
+    else { gx = wx - sx * 5 - 0.08; rotY = Math.PI / 2; }
     const gm = new THREE.Mesh(GRAFFITI_GEO, mat);
     gm.position.set(gx, gy, gz);
     gm.rotation.y = rotY;
@@ -201,56 +208,42 @@ function generateChunk(cx, cz) {
     chunkMeshes.set(key, []);
     _activeChunkKey = key;
 
-    const ox = cx * chunkSize;   // chunk 中心 X
-    const oz = cz * chunkSize;   // chunk 中心 Z
-    const half = chunkSize / 2;  // 20
-    const PW = 9;                // 通道寬度（玩家直徑 ~2.4，留足空間）
-    const WT = 0.22;             // 牆壁厚度 scale（實際 2.2 units）
+    const ox = cx * chunkSize;
+    const oz = cz * chunkSize;
+    const half = chunkSize / 2;
+    const PW = 9;
+    const WT = 0.22;
 
-    // 沿 X 方向放水平牆（固定 Z），在 [startX, endX] 範圍留一個通道缺口
     function placeHWall(startX, endX, wallZ, seed) {
         const range = (endX - startX) - PW * 2;
         if (range <= 0) return;
         const gapStart = startX + PW + seed * range;
         const gapEnd = gapStart + PW;
-        // 左段
         const leftLen = (gapStart - startX) / 10;
         if (leftLen > 0.05) addWall((startX + gapStart) / 2, wallZ, leftLen, WT);
-        // 右段
         const rightLen = (endX - gapEnd) / 10;
         if (rightLen > 0.05) addWall((gapEnd + endX) / 2, wallZ, rightLen, WT);
     }
 
-    // 沿 Z 方向放垂直牆（固定 X），在 [startZ, endZ] 範圍留一個通道缺口
     function placeVWall(startZ, endZ, wallX, seed) {
         const range = (endZ - startZ) - PW * 2;
         if (range <= 0) return;
         const gapStart = startZ + PW + seed * range;
         const gapEnd = gapStart + PW;
-        // 上段
         const topLen = (gapStart - startZ) / 10;
         if (topLen > 0.05) addWall(wallX, (startZ + gapStart) / 2, WT, topLen);
-        // 下段
         const botLen = (endZ - gapEnd) / 10;
         if (botLen > 0.05) addWall(wallX, (gapEnd + endZ) / 2, WT, botLen);
     }
 
-    // 每個 chunk 只放自己的「南邊界」和「東邊界」
-    // 北邊界由 (cx, cz-1) 的南邊界負責；西邊界由 (cx-1, cz) 的東邊界負責
-    // 這樣每條邊界只被放置一次，通道位置兩側一致。
-
-    // 南邊界：z = oz + half，沿 X 方向
     placeHWall(ox - half, ox + half, oz + half, chunkRand(cx, cz, 2));
-
-    // 東邊界：x = ox + half，沿 Z 方向
     placeVWall(oz - half, oz + half, ox + half, chunkRand(cx, cz, 1));
 
-    // 內部裝飾牆（1~2 道短牆，不跨越邊界）
     const numInt = Math.floor(chunkRand(cx, cz, 3) * 3);
     for (let i = 0; i < numInt; i++) {
         const wx = ox + (chunkRand(cx, cz, 10 + i) - 0.5) * (chunkSize * 0.55);
         const wz = oz + (chunkRand(cx, cz, 20 + i) - 0.5) * (chunkSize * 0.55);
-        if (Math.hypot(wx, wz) < 12) continue; // 保留出生點空曠
+        if (Math.hypot(wx, wz) < 12) continue;
         const isH = chunkRand(cx, cz, 30 + i) > 0.5;
         const len = chunkRand(cx, cz, 40 + i) * 0.8 + 0.5;
         addWall(wx, wz, isH ? len : WT, isH ? WT : len);
@@ -264,37 +257,37 @@ function generateChunk(cx, cz) {
             entities.push(createEntity({ x: ex, z: ez }));
         }
     }
+
     _activeChunkKey = null;
 }
 
-const CHUNK_CLEANUP_R = 4; // 超過這個 chunk 距離就清除
+const CHUNK_CLEANUP_R = 4;
 function updateInfiniteMaze() {
     const cx = Math.floor(camera.position.x / chunkSize);
     const cz = Math.floor(camera.position.z / chunkSize);
 
-    // 清除太遠的 chunk（每 120 幀執行一次，避免每幀掃描）
+    // 清除太遠的 chunk（每 120 幀執行一次）
     if (frameCount % 120 === 0) {
         for (const [key, meshes] of chunkMeshes) {
-            const [kcx, kcz] = key.split(',').map(Number);
+            const parts = key.split(',');
+            const [kcx, kcz] = [+parts[0], +parts[1]];
             if (Math.abs(kcx - cx) > CHUNK_CLEANUP_R || Math.abs(kcz - cz) > CHUNK_CLEANUP_R) {
                 meshes.forEach(m => scene.remove(m));
                 chunkMeshes.delete(key);
-                generatedChunks.delete(key); // 允許重新生成
+                generatedChunks.delete(key);
             }
         }
-        // 清除太遠的後室生物
         for (let i = entities.length - 1; i >= 0; i--) {
             const e = entities[i];
             const dx = e.mesh.position.x - camera.position.x;
             const dz = e.mesh.position.z - camera.position.z;
-            if (Math.sqrt(dx*dx + dz*dz) > CHUNK_CLEANUP_R * chunkSize) {
+            if (Math.sqrt(dx * dx + dz * dz) > CHUNK_CLEANUP_R * chunkSize) {
                 scene.remove(e.mesh);
                 entities.splice(i, 1);
             }
         }
     }
 
-    // 生成附近 chunk
     for (let i = -2; i <= 2; i++) {
         for (let j = -2; j <= 2; j++) {
             generateChunk(cx + i, cz + j);
@@ -351,7 +344,7 @@ let sprintToggle = false; // Q 切換衝刺（toggle）
 
 // ── Konami Code 無敵模式 ──
 let godMode = false;
-const KONAMI = ['arrowup','arrowup','arrowdown','arrowdown','arrowleft','arrowright','arrowleft','arrowright','b','a'];
+const KONAMI = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
 let konamiIdx = 0;
 
 document.addEventListener('keydown', e => {
@@ -468,7 +461,9 @@ function checkCollision(pos, height) {
 
     for (let i = 0; i < colliders.length; i++) {
         const col = colliders[i];
-        if (Math.abs(col.center.x - pos.x) < 20 && Math.abs(col.center.z - pos.z) < 20) {
+        if (Math.abs(col.center.x - pos.x) < 20 &&
+            Math.abs(col.center.z - pos.z) < 20 &&
+            Math.abs(col.center.y - pos.y) < 12) {
             if (playerBox.intersectsBox(col.box)) {
                 return true;
             }
@@ -481,11 +476,13 @@ function checkCollision(pos, height) {
 function checkMonsterCollision(pos) {
     const r = 2.0;
     const box = new THREE.Box3(
-        new THREE.Vector3(pos.x - r, 0, pos.z - r),
-        new THREE.Vector3(pos.x + r, 14, pos.z + r)
+        new THREE.Vector3(pos.x - r, pos.y - 8, pos.z - r),
+        new THREE.Vector3(pos.x + r, pos.y + 6, pos.z + r)
     );
     for (const col of colliders) {
-        if (Math.abs(col.center.x - pos.x) < 25 && Math.abs(col.center.z - pos.z) < 25) {
+        if (Math.abs(col.center.x - pos.x) < 25 &&
+            Math.abs(col.center.z - pos.z) < 25 &&
+            Math.abs(col.center.y - pos.y) < 12) { // 只考慮同層牆壁
             if (box.intersectsBox(col.box)) return true;
         }
     }
@@ -531,9 +528,10 @@ function applyMovement() {
     if (document.pointerLockElement !== document.body) return;
 
     // 玩家步行速度至少與怪物相同，確保玩家跑得贏
-    const BASE_WALK   = Math.max(0.22, AVATAR_SPEED);
+    const BASE_WALK = Math.max(0.22, AVATAR_SPEED);
     const BASE_SPRINT = Math.max(0.48, AVATAR_SPEED * 1.6);
     let baseSpeed = BASE_WALK;
+
     let targetHeight = 5.0;
 
     if (keys.shift) {
@@ -570,18 +568,21 @@ function applyMovement() {
     }
 
     // 跳躍：衝刺時跳得更遠
+    let onRamp = false;
     if (keys.space && isGrounded) {
         velocityY = keys.q ? 0.65 : 0.52;
         isGrounded = false;
     }
 
-    velocityY -= 0.032;
-    camera.position.y += velocityY;
+    if (!onRamp) {
+        velocityY -= 0.032;
+        camera.position.y += velocityY;
 
-    if (camera.position.y <= targetHeight) {
-        camera.position.y = targetHeight;
-        velocityY = 0;
-        isGrounded = true;
+        if (camera.position.y <= targetHeight) {
+            camera.position.y = targetHeight;
+            velocityY = 0;
+            isGrounded = true;
+        }
     }
 
     // 擊退速度衰減（加牆壁碰撞檢查，不能穿牆）
@@ -696,7 +697,6 @@ function updateChart() {
     const rollEl = document.getElementById('s-roll');
     rollEl.innerText = rDeg.toFixed(2) + '°';
     rollEl.style.color = Math.abs(rDeg) > 5 ? '#ff4444' : '#ffcc00';
-
     const warn = document.getElementById('gl-warn');
     const isAtPole = Math.abs(pDeg) >= 89.9;
     const yawJump = yawData[199] !== null && yawData[198] !== null ? Math.abs(yawData[199] - yawData[198]) : 0;
@@ -714,31 +714,65 @@ addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight);
 });
 
-// ===== 核心微積分 =====
+// ==========================================
+// 核心旋轉積分（這是整個報告最重要的函式）
+//
+// 每幀根據滑鼠輸入 (inX=上下, inY=左右) 更新攝影機朝向。
+// 同一份滑鼠輸入，尤拉角和四元數的處理方式完全不同。
+// ==========================================
 function integrateOrientation() {
+    // Mode 1 = 尤拉角（安全模式）：直接用 Three.js 內建的 rotation.set()
+    // Three.js 幫你做了 YXZ 旋轉矩陣乘法，且角度被夾在 ±89.9°
+    // 這是一般 FPS 遊戲的標準做法，永遠不會觸發萬向鎖
     if (currentMode === 1) return;
 
-    const q = inX;
-    const r = inY;
+    const q = inX; // 俯仰輸入量（rad）
+    const r = inY; // 偏航輸入量（rad）
     inX = 0; inY = 0;
 
+    // ── Mode 2：尤拉角「運動學公式」（故意暴露萬向鎖）──
     if (currentMode === 2) {
+        // Pitch（俯仰）：直接累加，最多到 ±90°
         e2.pitch += q;
         e2.pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, e2.pitch));
 
+        // ⚠️ 這行是萬向鎖的元兇：
+        //    尤拉角運動學公式要求 Yaw 的變化率 = 輸入 / cos(pitch)
+        //    當 pitch → 90°：cos(90°) = 0 → 除以零 → Yaw 瞬間發散到 ±∞
+        //    這就是「萬向鎖」：俯仰軸與偏航軸重疊，損失一個自由度
         const cos_pitch = Math.cos(e2.pitch);
-        e2.yaw += r / cos_pitch;
-        e2.roll = 0;
+        e2.yaw += r / cos_pitch; // ← 罪魁禍首：cos_pitch 接近 0 時爆炸
 
+        e2.roll = 0; // Roll 鎖為 0（我們只想展示 pitch/yaw 的問題）
         camera.rotation.set(e2.pitch, e2.yaw, e2.roll, 'YXZ');
+
+        // ── Mode 3：四元數（永不崩潰）──
     } else if (currentMode === 3) {
+        // 分別累加偏航角與俯仰角（只是純量，還不是四元數）
         q3yaw += r;
         q3pitch += q;
         const lim = limited ? PITCH_90 : PITCH_FOLD;
         q3pitch = Math.max(-lim, Math.min(lim, q3pitch));
-        const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q3yaw);
-        const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), q3pitch);
+
+        // 四元數的表示法：q = (w, x, y, z)
+        //   繞 Y 軸旋轉 θ：w=cos(θ/2), x=0, y=sin(θ/2), z=0
+        //   繞 X 軸旋轉 φ：w=cos(φ/2), x=sin(φ/2), y=0, z=0
+        const qy = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 1, 0), q3yaw   // 繞世界 Y 軸偏航
+        );
+        const qx = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(1, 0, 0), q3pitch  // 繞本地 X 軸俯仰
+        );
+
+        // 四元數乘法：先偏航再俯仰（注意順序！乘法不可交換）
+        //   q3 = qy × qx
+        // 這等價於旋轉矩陣相乘，但：
+        //   1. 不存在分母為零的問題（沒有 cos(pitch) 在分母）
+        //   2. 數值永遠穩定（|q| 恆等於 1，不會數值飄移）
+        //   3. 可以直接插值（SLERP），動畫更順滑
         q3.copy(qy).multiply(qx);
+
+        // 直接把四元數丟給 Three.js，它會自己換算成旋轉矩陣渲染
         camera.quaternion.copy(q3);
     }
 }
@@ -798,24 +832,24 @@ let playerHP = PLAYER_MAX_HP;
 let playerAlive = true;
 let playerDamageCooldown = 0;
 const knockbackVel = new THREE.Vector3(0, 0, 0);
-const STAMINA_MAX   = 100;
-let   stamina       = STAMINA_MAX;
+const STAMINA_MAX = 100;
+let stamina = STAMINA_MAX;
 const STAMINA_DRAIN = 0.7;   // 每幀衝刺消耗
 const STAMINA_REGEN = 0.22;  // 每幀回復
-const AVATAR_ATTACK_RANGE    = 2.8;
-const AVATAR_HIT_RADIUS      = 2.5;
-const CHASE_MAX_DIST         = 100;
-const BULLET_SPEED           = 2.5;
-const BULLET_DAMAGE          = 5;
+const AVATAR_ATTACK_RANGE = 2.8;
+const AVATAR_HIT_RADIUS = 2.5;
+const CHASE_MAX_DIST = 100;
+const BULLET_SPEED = 2.5;
+const BULLET_DAMAGE = 5;
 
 let gameStarted = false;
 
 // 為每個 registry mob 建立執行時物件
 const mobs = MOB_REGISTRY.map(def => {
     // 3D sprite
-    const tex  = new THREE.TextureLoader().load(def.image);
-    const geo  = new THREE.PlaneGeometry(10, 16);
-    const mat  = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    const tex = new THREE.TextureLoader().load(def.image);
+    const geo = new THREE.PlaneGeometry(10, 16);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
     const sprite = new THREE.Mesh(geo, mat);
     sprite.position.set(0, 8, -999); // 先放在場外
 
@@ -877,11 +911,11 @@ function shuffleArray(arr) {
     return a;
 }
 let monsterQueue = shuffleArray(mobs.map((_, i) => i));
-let queueIdx     = 0;
+let queueIdx = 0;
 
 function updateHPBars() {
     document.getElementById('player-hp-bar').style.width = Math.max(0, playerHP / PLAYER_MAX_HP * 100) + '%';
-    document.getElementById('player-hp-num').innerText   = Math.ceil(playerHP) + '/100';
+    document.getElementById('player-hp-num').innerText = Math.ceil(playerHP) + '/100';
     mobs.forEach(m => {
         const pct = Math.max(0, m.hp / m.def.hp * 100);
         const bar = document.getElementById(`mob-hp-bar-${m.def.id}`);
@@ -900,22 +934,23 @@ function showOnlyMobHP(idx) {
 // 在玩家周圍找一個不在牆內的出生點（同時適用於怪物和未來用途）
 function safeSpawnPosition(originX, originZ, minDist, maxDist, maxAttempts = 40) {
     const _t = new THREE.Vector3();
+    const spawnY = 8;
     for (let i = 0; i < maxAttempts; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const dist  = minDist + Math.random() * (maxDist - minDist);
-        _t.set(originX + Math.cos(angle) * dist, 8, originZ + Math.sin(angle) * dist);
+        const dist = minDist + Math.random() * (maxDist - minDist);
+        _t.set(originX + Math.cos(angle) * dist, spawnY, originZ + Math.sin(angle) * dist);
         if (!checkMonsterCollision(_t)) return _t.clone();
     }
     // 如果試了 maxAttempts 次都在牆內，擴大範圍再試一輪
     for (let i = 0; i < maxAttempts; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const dist  = maxDist + Math.random() * maxDist;
-        _t.set(originX + Math.cos(angle) * dist, 8, originZ + Math.sin(angle) * dist);
+        const dist = maxDist + Math.random() * maxDist;
+        _t.set(originX + Math.cos(angle) * dist, spawnY, originZ + Math.sin(angle) * dist);
         if (!checkMonsterCollision(_t)) return _t.clone();
     }
     // 最終保底：直接用原始方向但距離再推遠
     const angle = Math.random() * Math.PI * 2;
-    return new THREE.Vector3(originX + Math.cos(angle) * (maxDist * 2), 8, originZ + Math.sin(angle) * (maxDist * 2));
+    return new THREE.Vector3(originX + Math.cos(angle) * (maxDist * 2), spawnY, originZ + Math.sin(angle) * (maxDist * 2));
 }
 
 function activateMob(idx) {
@@ -925,11 +960,11 @@ function activateMob(idx) {
     const m = mobs[monsterQueue[idx]];
     const spawnPos = safeSpawnPosition(camera.position.x, camera.position.z, 40, 60);
     m.sprite.position.copy(spawnPos);
-    m.hp    = m.def.hp;
+    m.hp = m.def.hp;
     m.alive = true;
     m.sprite.userData.pathTimer = 0;
-    m.sprite.userData.nextWP    = null;
-    m.sprite.userData.kbVel     = new THREE.Vector3(0, 0, 0);
+    m.sprite.userData.nextWP = null;
+    m.sprite.userData.kbVel = new THREE.Vector3(0, 0, 0);
     scene.add(m.sprite);
     showOnlyMobHP(monsterQueue[idx]);
     updateHPBars();
@@ -963,41 +998,41 @@ const _mcBox = new THREE.Box3();
 const AStarNav = (() => {
     const CELL = 4, GRID_R = 28, MAX_ITER = 900;
     const tv = new THREE.Vector3(0, 4, 0);
-    const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
     return {
         findPath(sx, sz, gx, gz) {
             const S = (w) => Math.round(w / CELL);
             const ox = S(sx), oz = S(sz), tx = S(gx), tz = S(gz);
-            if (ox===tx && oz===tz) return null;
-            const enc = (x,z) => `${x},${z}`;
-            const walk = (x,z) => { tv.x=x*CELL; tv.z=z*CELL; return !checkMonsterCollision(tv); };
-            const open=[ {x:ox,z:oz,f:0,g:0} ];
-            const came=new Map(), gC=new Map([[enc(ox,oz),0]]), closed=new Set();
-            let it=0;
-            while (open.length && it++<MAX_ITER) {
-                let bi=0;
-                for (let i=1;i<open.length;i++) if(open[i].f<open[bi].f) bi=i;
-                const cur=open.splice(bi,1)[0];
-                const ce=enc(cur.x,cur.z);
+            if (ox === tx && oz === tz) return null;
+            const enc = (x, z) => `${x},${z}`;
+            const walk = (x, z) => { tv.x = x * CELL; tv.z = z * CELL; return !checkMonsterCollision(tv); };
+            const open = [{ x: ox, z: oz, f: 0, g: 0 }];
+            const came = new Map(), gC = new Map([[enc(ox, oz), 0]]), closed = new Set();
+            let it = 0;
+            while (open.length && it++ < MAX_ITER) {
+                let bi = 0;
+                for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
+                const cur = open.splice(bi, 1)[0];
+                const ce = enc(cur.x, cur.z);
                 if (closed.has(ce)) continue;
                 closed.add(ce);
-                if (cur.x===tx && cur.z===tz) {
-                    let e=ce, first=null;
-                    while (came.has(e)) { first=e; e=came.get(e); }
+                if (cur.x === tx && cur.z === tz) {
+                    let e = ce, first = null;
+                    while (came.has(e)) { first = e; e = came.get(e); }
                     if (!first) return null;
-                    const [fx,fz]=first.split(',').map(Number);
-                    return {x:fx*CELL, z:fz*CELL};
+                    const [fx, fz] = first.split(',').map(Number);
+                    return { x: fx * CELL, z: fz * CELL };
                 }
-                const cg=gC.get(ce);
-                for (const [dx,dz] of DIRS) {
-                    const nx=cur.x+dx, nz=cur.z+dz;
-                    if (Math.abs(nx-ox)>GRID_R || Math.abs(nz-oz)>GRID_R) continue;
-                    const ne=enc(nx,nz);
-                    if (closed.has(ne)||!walk(nx,nz)) continue;
-                    const ng=cg+(dx&&dz?1.414:1);
-                    if (ng<(gC.get(ne)??Infinity)) {
-                        came.set(ne,ce); gC.set(ne,ng);
-                        open.push({x:nx,z:nz,f:ng+Math.abs(nx-tx)+Math.abs(nz-tz),g:ng});
+                const cg = gC.get(ce);
+                for (const [dx, dz] of DIRS) {
+                    const nx = cur.x + dx, nz = cur.z + dz;
+                    if (Math.abs(nx - ox) > GRID_R || Math.abs(nz - oz) > GRID_R) continue;
+                    const ne = enc(nx, nz);
+                    if (closed.has(ne) || !walk(nx, nz)) continue;
+                    const ng = cg + (dx && dz ? 1.414 : 1);
+                    if (ng < (gC.get(ne) ?? Infinity)) {
+                        came.set(ne, ce); gC.set(ne, ng);
+                        open.push({ x: nx, z: nz, f: ng + Math.abs(nx - tx) + Math.abs(nz - tz), g: ng });
                     }
                 }
             }
@@ -1006,7 +1041,7 @@ const AStarNav = (() => {
     };
 })();
 
-let AVATAR_SPEED  = 0.11;
+let AVATAR_SPEED = 0.11;
 let monsterEnabled = true;
 function setMonsterEnabled(on) {
     monsterEnabled = on;
@@ -1014,9 +1049,9 @@ function setMonsterEnabled(on) {
     if (!on) mobs.forEach(m => { m.audio.volume = 0; });
 }
 function setMonsterSpeed(val) {
-    const mult = (val/6).toFixed(1);
-    AVATAR_SPEED = 0.055 * (val/6);
-    document.getElementById('monster-speed-val').innerText = '×'+mult;
+    const mult = (val / 6).toFixed(1);
+    AVATAR_SPEED = 0.055 * (val / 6);
+    document.getElementById('monster-speed-val').innerText = '×' + mult;
 }
 
 const bullets = [];
@@ -1033,12 +1068,12 @@ function shoot() {
     if (!gameStarted || !playerAlive) return;
     const s = fireAudio.cloneNode();
     s.volume = 0.6;
-    s.play().catch(() => {});
+    s.play().catch(() => { });
     const bullet = new THREE.Mesh(_bulletGeo, _bulletMat);
     bullet.position.copy(camera.position);
-    const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     bullet.position.addScaledVector(forward, 1.0);
-    bullet.userData.vel  = forward.clone().multiplyScalar(BULLET_SPEED);
+    bullet.userData.vel = forward.clone().multiplyScalar(BULLET_SPEED);
     bullet.userData.life = 80;
     scene.add(bullet);
     bullets.push(bullet);
@@ -1077,10 +1112,10 @@ function hurtPlayer(dmg, attackerPos) {
 
 function updateAvatarSystem() {
     const activeMobIdx = monsterQueue[queueIdx];
-    const activeMob    = mobs[activeMobIdx];
+    const activeMob = mobs[activeMobIdx];
 
     // ── 子彈更新 ──
-    for (let i = bullets.length-1; i >= 0; i--) {
+    for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         b.position.add(b.userData.vel);
         b.userData.life--;
@@ -1090,7 +1125,7 @@ function updateAvatarSystem() {
             const sp = activeMob.sprite;
             const bx = b.position.x - sp.position.x;
             const bz = b.position.z - sp.position.z;
-            if (Math.sqrt(bx*bx + bz*bz) < activeMob.def.hitRadius) {
+            if (Math.sqrt(bx * bx + bz * bz) < activeMob.def.hitRadius) {
                 // 子彈飛行方向 = 擊退方向
                 const kbDir = b.userData.vel.clone().setY(0).normalize();
                 if (!sp.userData.kbVel) sp.userData.kbVel = new THREE.Vector3();
@@ -1115,7 +1150,7 @@ function updateAvatarSystem() {
                 const cbx = b.position.x - cr.mesh.position.x;
                 const cbz = b.position.z - cr.mesh.position.z;
                 const cby = b.position.y - cr.mesh.position.y;
-                if (Math.sqrt(cbx*cbx + cbz*cbz) < CRAWLER_HIT_R && Math.abs(cby) < 3) {
+                if (Math.sqrt(cbx * cbx + cbz * cbz) < CRAWLER_HIT_R && Math.abs(cby) < 3) {
                     cr.hp -= BULLET_DAMAGE;
                     remove = true;
                     if (cr.hp <= 0) {
@@ -1131,22 +1166,22 @@ function updateAvatarSystem() {
             }
         }
 
-        if (remove) { scene.remove(b); bullets.splice(i,1); }
+        if (remove) { scene.remove(b); bullets.splice(i, 1); }
     }
 
     // ── Cooldown timers ──
     if (shootCooldown > 0) shootCooldown--;
-    if (muzzleTimer > 0) { muzzleTimer--; if (muzzleTimer<=0) muzzleFlash.classList.remove('show'); }
-    if (damageFlashTimer > 0) { damageFlashTimer--; if (damageFlashTimer<=0) damageFlash.classList.remove('show'); }
+    if (muzzleTimer > 0) { muzzleTimer--; if (muzzleTimer <= 0) muzzleFlash.classList.remove('show'); }
+    if (damageFlashTimer > 0) { damageFlashTimer--; if (damageFlashTimer <= 0) damageFlash.classList.remove('show'); }
 
     const paused = document.pointerLockElement !== document.body;
     if (!activeMob.alive || !playerAlive || !monsterEnabled || !gameStarted || paused) return;
 
-    const sp        = activeMob.sprite;
+    const sp = activeMob.sprite;
     const playerPos = camera.position;
     const dx = playerPos.x - sp.position.x;
     const dz = playerPos.z - sp.position.z;
-    const dist = Math.sqrt(dx*dx + dz*dz);
+    const dist = Math.sqrt(dx * dx + dz * dz);
 
     sp.lookAt(playerPos);
 
@@ -1171,7 +1206,7 @@ function updateAvatarSystem() {
     }
 
     // ── 卡住偵測：連續 150 幀位移 < 0.15 → 強制重生到玩家附近 ──
-    if (!sp.userData.lastPos)    sp.userData.lastPos    = sp.position.clone();
+    if (!sp.userData.lastPos) sp.userData.lastPos = sp.position.clone();
     if (!sp.userData.stuckFrames) sp.userData.stuckFrames = 0;
     if (sp.position.distanceTo(sp.userData.lastPos) < 0.15) {
         sp.userData.stuckFrames++;
@@ -1189,7 +1224,7 @@ function updateAvatarSystem() {
 
     // ── 指數追趕加速（dist > 25 開始，每單位距離乘 1.028，上限 6 倍）──
     const catchupMult = Math.min(6.0, Math.pow(1.028, Math.max(0, dist - 25)));
-    const mobSpeed    = AVATAR_SPEED * catchupMult;
+    const mobSpeed = AVATAR_SPEED * catchupMult;
 
     // ── 距離過遠計時：dist > 100 持續 220 幀（≈3.6s）→ 強制瞬移到玩家附近 ──
     if (!sp.userData.farFrames) sp.userData.farFrames = 0;
@@ -1198,10 +1233,10 @@ function updateAvatarSystem() {
         if (sp.userData.farFrames >= 220) {
             const newPos = safeSpawnPosition(playerPos.x, playerPos.z, 18, 30);
             sp.position.copy(newPos);
-            sp.userData.farFrames   = 0;
+            sp.userData.farFrames = 0;
             sp.userData.stuckFrames = 0;
-            sp.userData.nextWP      = null;
-            sp.userData.pathTimer   = 0;
+            sp.userData.nextWP = null;
+            sp.userData.pathTimer = 0;
         }
     } else {
         sp.userData.farFrames = 0;
@@ -1230,7 +1265,7 @@ function updateAvatarSystem() {
 
     // ── 距離感音效 ──
     if (activeMob.audioStarted) {
-        const vol = Math.pow(Math.max(0, 1 - dist/CHASE_MAX_DIST), 1.5);
+        const vol = Math.pow(Math.max(0, 1 - dist / CHASE_MAX_DIST), 1.5);
         activeMob.audio.volume = Math.min(1, vol * 0.95);
     }
 
@@ -1246,10 +1281,10 @@ function updateAvatarSystem() {
 // ==========================================
 // 杏仁水補給品系統
 // ==========================================
-const ALMOND_HEAL       = 30;
-const ALMOND_MAX        = 6;
-const ALMOND_PICKUP_R   = 2.5;
-const almondWaters      = [];
+const ALMOND_HEAL = 30;
+const ALMOND_MAX = 6;
+const ALMOND_PICKUP_R = 2.5;
+const almondWaters = [];
 
 function createAlmondWaterMesh() {
     const c = document.createElement('canvas');
@@ -1336,7 +1371,7 @@ function updateAlmondWaters() {
         const aw = almondWaters[i];
         const dx = pPos.x - aw.mesh.position.x;
         const dz = pPos.z - aw.mesh.position.z;
-        if (Math.sqrt(dx*dx + dz*dz) > ALMOND_DESPAWN_DIST) {
+        if (Math.sqrt(dx * dx + dz * dz) > ALMOND_DESPAWN_DIST) {
             scene.remove(aw.mesh);
             almondWaters.splice(i, 1);
         }
@@ -1363,7 +1398,7 @@ function updateAlmondWaters() {
 
         const dx = pPos.x - aw.mesh.position.x;
         const dz = pPos.z - aw.mesh.position.z;
-        if (Math.sqrt(dx*dx + dz*dz) < ALMOND_PICKUP_R && playerAlive) {
+        if (Math.sqrt(dx * dx + dz * dz) < ALMOND_PICKUP_R && playerAlive) {
             scene.remove(aw.mesh);
             almondWaters.splice(i, 1);
             const healed = Math.min(ALMOND_HEAL, PLAYER_MAX_HP - playerHP);
@@ -1377,12 +1412,12 @@ function updateAlmondWaters() {
 // ==========================================
 // 天花板 / 地板爬行生物系統
 // ==========================================
-const CRAWLER_MAX            = 10;
-const CRAWLER_ATTACK_RANGE   = 9;
-const CRAWLER_ATTACK_DMG     = 6;
-const CRAWLER_COOLDOWN_BASE  = 160;  // 幀
-const CRAWLER_HIT_R          = 2.2;
-const crawlers               = [];
+const CRAWLER_MAX = 10;
+const CRAWLER_ATTACK_RANGE = 9;
+const CRAWLER_ATTACK_DMG = 6;
+const CRAWLER_COOLDOWN_BASE = 160;  // 幀
+const CRAWLER_HIT_R = 2.2;
+const crawlers = [];
 
 function createCrawlerMesh() {
     const c = document.createElement('canvas');
@@ -1501,8 +1536,9 @@ function updateCrawlers() {
         // 朝玩家轉（僅水平旋轉）
         cr.mesh.rotation.y = Math.atan2(dx, dz);
 
-        // 攻擊判定（暫停或怪物關閉時不攻擊）
-        if (crawlerActive && distXZ < CRAWLER_ATTACK_RANGE && playerAlive) {
+        // 攻擊判定（暫停或怪物關閉時不攻擊，跨層不攻擊）
+        const crawlerYDiff = Math.abs(pPos.y - cr.mesh.position.y);
+        if (crawlerActive && distXZ < CRAWLER_ATTACK_RANGE && crawlerYDiff < 15 && playerAlive) {
             if (cr.attackCooldown > 0) {
                 cr.attackCooldown--;
             } else {
@@ -1532,10 +1568,10 @@ function updateFlicker() {
         flickerFrames--;
         const v = Math.random() < 0.25 ? 0 : 0.15 + Math.random() * 0.85;
         ambientLight.intensity = 0.5 * v;
-        dirLight.intensity     = 0.4 * v;
+        dirLight.intensity = 0.4 * v;
     } else {
         ambientLight.intensity = 0.5;
-        dirLight.intensity     = 0.4;
+        dirLight.intensity = 0.4;
         if (Math.random() < 0.0018) {
             flickerFrames = 8 + Math.floor(Math.random() * 28);
         }
@@ -1545,18 +1581,18 @@ function updateFlicker() {
 // ==========================================
 // Web Audio：腳步聲、喘氣聲、心跳聲、立體聲
 // ==========================================
-let audioCtx       = null;
-let footstepTimer  = 0;
-let footSide       = 1;
-let breathTimer    = 200;
+let audioCtx = null;
+let footstepTimer = 0;
+let footSide = 1;
+let breathTimer = 200;
 
 function playFootstep(sprinting) {
     if (!audioCtx) return;
-    const freq = sprinting ? 180 + Math.random()*60 : 90 + Math.random()*40;
-    const dur  = sprinting ? 0.07 : 0.12;
-    const osc  = audioCtx.createOscillator();
+    const freq = sprinting ? 180 + Math.random() * 60 : 90 + Math.random() * 40;
+    const dur = sprinting ? 0.07 : 0.12;
+    const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    const pan  = audioCtx.createStereoPanner();
+    const pan = audioCtx.createStereoPanner();
     pan.pan.value = footSide * 0.28; footSide *= -1;
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
@@ -1573,9 +1609,9 @@ function playBreath(panting) {
     const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    const src    = audioCtx.createBufferSource();
+    const src = audioCtx.createBufferSource();
     const filter = audioCtx.createBiquadFilter();
-    const gain   = audioCtx.createGain();
+    const gain = audioCtx.createGain();
     src.buffer = buf;
     filter.type = 'bandpass';
     filter.frequency.value = panting ? 700 : 450;
@@ -1591,7 +1627,7 @@ function playHeartbeat() {
     if (!audioCtx) return;
     const thump = (delay, f, d) => {
         const osc = audioCtx.createOscillator();
-        const g   = audioCtx.createGain();
+        const g = audioCtx.createGain();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(f, audioCtx.currentTime + delay);
         osc.frequency.exponentialRampToValueAtTime(f * 0.4, audioCtx.currentTime + delay + d);
@@ -1601,7 +1637,7 @@ function playHeartbeat() {
         osc.start(audioCtx.currentTime + delay);
         osc.stop(audioCtx.currentTime + delay + d);
     };
-    thump(0,    65, 0.11);
+    thump(0, 65, 0.11);
     thump(0.20, 52, 0.09);
 }
 
@@ -1612,7 +1648,7 @@ function updateBreathing() {
     if (breathTimer <= 0) {
         playBreath(panting);
         breathTimer = panting
-            ? 80  + Math.floor(Math.random() * 25)
+            ? 80 + Math.floor(Math.random() * 25)
             : 200 + Math.floor(Math.random() * 80);
     }
     // 低血量心跳
@@ -1656,10 +1692,10 @@ document.getElementById('blocker').addEventListener('click', () => {
             mobs.forEach(m => {
                 try {
                     const src = audioCtx.createMediaElementSource(m.audio);
-                    m.panner  = audioCtx.createStereoPanner();
+                    m.panner = audioCtx.createStereoPanner();
                     src.connect(m.panner);
                     m.panner.connect(audioCtx.destination);
-                } catch(e) { console.warn('panner setup failed:', e); }
+                } catch (e) { console.warn('panner setup failed:', e); }
             });
         }
         mobs.forEach(m => {
